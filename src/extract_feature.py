@@ -1,6 +1,6 @@
-import torch, numpy as np
+import torch
+import random
 from typing import List
-
 from tqdm import tqdm
 
 from src.config import get_config
@@ -25,25 +25,31 @@ def extract_feature(dataset, processor, tokenizer):
     ref_idx = None
     ref_duration = 0.0
 
-    for i in tqdm(
-        range(search_size),
-        desc="Finding reference audio",
-    ):
-        audio = dataset[i][audio_column]
+    if (select_ref_strategy == "random"):
+        ref_idx = random.randint(0,search_size-1)
+        audio = dataset[ref_idx][audio_column]
+        ref_duration = len(audio["array"]) / audio["sampling_rate"]
+    else:
+        for i in tqdm(
+            range(search_size),
+            desc="Finding reference audio",
+        ):
+            audio = dataset[i][audio_column]
 
-        duration = len(audio["array"]) / audio["sampling_rate"]
+            duration = len(audio["array"]) / audio["sampling_rate"]
 
-        if duration <= ref_max_duration and duration > ref_min_duration:
-            ref_idx = i
-            ref_duration = duration
-            break
+            if duration <= ref_max_duration and duration > ref_min_duration and duration > ref_duration:
+                ref_idx = i
+                ref_duration = duration
+                if (select_ref_strategy == "good enough"):
+                    break
 
-    if ref_idx is None:
-        raise RuntimeError("Could not find suitable reference audio.")
+        if ref_idx is None:
+            raise RuntimeError("Could not find suitable reference audio.")
 
     ref_audio = dataset[ref_idx][audio_column]
 
-    print(f"Using index {ref_idx} as reference ({ref_duration:.2f}s)")
+    print(f"Using index {ref_idx} as reference\n Duration: {ref_duration:.2f}s\n Selection Strategy: {select_ref_strategy}")
 
     dataset = dataset.filter(
         lambda _, idx: idx != ref_idx,
