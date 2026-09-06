@@ -4,4 +4,29 @@ version = "0.1.0"
 description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.14"
-dependencies = []
+dependencies = [
+    "argparse>=1.4.0",
+    "datasets>=5.0.1",
+    "hf-xet>=1.6.0",
+    "huggingface-hub>=0.36.2",
+    "librosa>=1.0.0",
+    "peft>=0.20.0",
+    "pydantic>=2.13.4",
+    "qwen-tts>=0.1.1",
+    "soundfile>=0.14.0",
+    "torch>=2.13.0",
+    "torchaudio>=2.11.0",
+    "torchcodec>=0.16.0",
+    "torchvision>=0.28.0",
+]
+
+[[tool.uv.index]]
+name = "pytorch-cuda"
+url = "https://download.pytorch.org/whl/cu130"
+explicit = true
+
+[tool.uv.sources]
+torch = [{ index = "pytorch-cuda" }]
+torchvision = [{ index = "pytorch-cuda" }]
+torchaudio = [{ index = "pytorch-cuda" }]
+torchcodec = [{ index = "pytorch-cuda"}]
