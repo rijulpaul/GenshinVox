@@ -2,7 +2,7 @@ from typing import Any, List, Tuple, Union
 
 import numpy as np
 import torch
-from qwen_tts.core.models.configuration_qwen3_tts import Qwen3TTSConfig
+from qwen_tts.qwen_tts.core.models.configuration_qwen3_tts import Qwen3TTSConfig
 from torch.utils.data import Dataset
 
 AudioLike = Union[

@@ -1,4 +1,4 @@
-from qwen_tts import Qwen3TTSTokenizer, Qwen3TTSModel
+from qwen_tts.qwen_tts import Qwen3TTSTokenizer, Qwen3TTSModel
 from huggingface_hub import snapshot_download
 
 from src.config import get_config

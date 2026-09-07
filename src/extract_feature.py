@@ -5,7 +5,7 @@ from tqdm import tqdm
 
 from src.config import get_config
 
-from qwen_tts.core.models.modeling_qwen3_tts import mel_spectrogram
+from qwen_tts.qwen_tts.core.models.modeling_qwen3_tts import mel_spectrogram
 
 
 def extract_feature(dataset, processor, tokenizer):
