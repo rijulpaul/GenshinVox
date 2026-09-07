@@ -28,7 +28,8 @@
     "attn_implementation": "sdpa",
     "output_path": "./output",
     "speaker_name": "Test Speaker",
-    "gradient_accumulation_steps": 2
+    "gradient_accumulation_steps": 2,
+    "enable_tracking": "True"
   },
   "dataset": {
     "dataset": "rijulpaul/genshin-voice",
@@ -44,5 +45,12 @@
     "select_ref_audio_strategy": "random",
     "ref_audio_min_duration": 5,
     "ref_audio_max_duration": 15
+  },
+  "wandb": {
+    "project":"test",
+    "entity":"test",
+    "run_name":"test run",
+    "mode":"offline",
+    "log_every_n_steps": 50
   }
 }

@@ -1,6 +1,6 @@
-import os, shutil, json
+import os, shutil, json, time
 
-from src.config import get_config
+from src.config import get_config, WandbConfig
 
 from accelerate import Accelerator
 from safetensors.torch import save_file
@@ -8,30 +8,69 @@ from torch.utils.data import DataLoader
 from torch.optim import AdamW
 
 
+def _tracker_config(config):
+    """Flatten the training config into a dict for wandb hyperparameter logging."""
+    return {
+        "lr": config.lr,
+        "beta1": config.betas[0],
+        "beta2": config.betas[1],
+        "eps": config.eps,
+        "weight_decay": config.weight_decay,
+        "amsgrad": config.amsgrad,
+        "epochs": config.epochs,
+        "batch_size": config.batch_size,
+        "gradient_accumulation_steps": config.gradient_accumulation_steps,
+        "speaker_name": config.speaker_name,
+        "model": config.model,
+        "model_path": config.model_path,
+        "output_path": config.output_path,
+    }
+
+
+def _setup_tracker(accelerator, training_config, wandb_config):
+    """Initialize a wandb tracker through accelerate (no-op if disabled)."""
+    init_kwargs = {"wandb": {}}
+    if wandb_config.entity:
+        init_kwargs["wandb"]["entity"] = wandb_config.entity
+    if wandb_config.run_name:
+        init_kwargs["wandb"]["name"] = wandb_config.run_name
+    if wandb_config.mode:
+        init_kwargs["wandb"]["mode"] = wandb_config.mode
+    accelerator.init_trackers(
+        wandb_config.project,
+        config=_tracker_config(training_config),
+        init_kwargs=init_kwargs,
+    )
+
+
 def finetune(model, dataset):
 
-    config = get_config().training
+    training_config = get_config().training
+    wandb_config = get_config().wandb
 
     dataloader = DataLoader(
         dataset,
-        batch_size=config.batch_size,
+        batch_size=training_config.batch_size,
         shuffle=True,
         collate_fn=dataset.collate_fn,
     )
     optimizer = AdamW(
         model.model.parameters(),
-        lr=config.lr,
-        betas=config.betas,
-        eps=config.eps,
-        weight_decay=config.weight_decay,
-        amsgrad=config.amsgrad,
+        lr=training_config.lr,
+        betas=training_config.betas,
+        eps=training_config.eps,
+        weight_decay=training_config.weight_decay,
+        amsgrad=training_config.amsgrad,
     )
 
     accelerator = Accelerator(
-        gradient_accumulation_steps=config.gradient_accumulation_steps,
+        gradient_accumulation_steps=training_config.gradient_accumulation_steps,
         mixed_precision="bf16",
-        log_with="tensorboard",
+        log_with="wandb",
     )
+
+    if training_config.enable_tracking:
+        _setup_tracker(accelerator, training_config, wandb_config)
 
     model, optimizer, dataloader = accelerator.prepare(
         model.model, optimizer, dataloader
@@ -41,7 +80,18 @@ def finetune(model, dataset):
 
     target_speaker_embedding = None
 
-    for epoch in range(config.epochs):
+    # --- experiment tracking state ---
+    global_step = 0
+    micro_steps = 0
+    running_loss = 0.0
+    running_talker_loss = 0.0
+    running_sub_talker_loss = 0.0
+
+    for epoch in range(training_config.epochs):
+        epoch_start = time.perf_counter()
+        epoch_loss = epoch_talker_loss = epoch_sub_talker_loss = 0.0
+        epoch_samples = 0
+
         for step, batch in enumerate(dataloader):
             with accelerator.accumulate(model):
                 input_ids = batch["input_ids"]
@@ -108,29 +158,90 @@ def finetune(model, dataset):
 
                 accelerator.backward(loss)
 
+                grad_norm = None
                 if accelerator.sync_gradients:
-                    accelerator.clip_grad_norm_(model.parameters(), 1.0)
+                    grad_norm = accelerator.clip_grad_norm_(
+                        model.parameters(), 1.0
+                    )
+                    if grad_norm is not None:
+                        grad_norm = grad_norm.item()
 
                 optimizer.step()
                 optimizer.zero_grad()
 
+            # --- track metrics ---
+            loss_value = loss.item()
+            talker_loss_value = outputs.loss.item()
+            sub_talker_loss_value = sub_talker_loss.item()
+
+            running_loss += loss_value
+            running_talker_loss += talker_loss_value
+            running_sub_talker_loss += sub_talker_loss_value
+            micro_steps += 1
+            epoch_loss += loss_value
+            epoch_talker_loss += talker_loss_value
+            epoch_sub_talker_loss += sub_talker_loss_value
+            epoch_samples += batch["input_ids"].shape[0]
+
+            if accelerator.sync_gradients:
+                global_step += 1
+                if (
+                    training_config.enable_tracking
+                    and global_step % wandb_config.log_every_n_steps == 0
+                ):
+                    accelerator.log(
+                        {
+                            "train/loss": running_loss / micro_steps,
+                            "train/talker_loss": running_talker_loss / micro_steps,
+                            "train/sub_talker_loss": (
+                                running_sub_talker_loss / micro_steps
+                            ),
+                            "train/grad_norm": grad_norm,
+                            "train/learning_rate": optimizer.param_groups[0]["lr"],
+                            "train/micro_steps": micro_steps,
+                        },
+                        step=global_step,
+                    )
+                running_loss = 0.0
+                running_talker_loss = 0.0
+                running_sub_talker_loss = 0.0
+                micro_steps = 0
+
             if step % 10 == 0:
                 accelerator.print(
-                    f"Epoch {epoch} | Step {step} | Loss: {loss.item():.4f}"
+                    f"Epoch {epoch} | Step {step} | Loss: {loss_value:.4f}"
                 )
 
-        if accelerator.is_main_process:
-            output_dir = os.path.join(config.output_path, f"checkpoint-epoch-{epoch}")
-            shutil.copytree(config.model_path, output_dir, dirs_exist_ok=True)
+        if training_config.enable_tracking:
+            epoch_duration = time.perf_counter() - epoch_start
+            accelerator.log(
+                {
+                    "epoch/epoch": epoch,
+                    "epoch/loss": epoch_loss / len(dataloader),
+                    "epoch/talker_loss": epoch_talker_loss / len(dataloader),
+                    "epoch/sub_talker_loss": (
+                        epoch_sub_talker_loss / len(dataloader)
+                    ),
+                    "epoch/duration_sec": epoch_duration,
+                    "epoch/samples_per_sec": (
+                        epoch_samples / epoch_duration if epoch_duration > 0 else 0.0
+                    ),
+                },
+                step=global_step,
+            )
 
-            input_config_file = os.path.join(config.model_path, "config.json")
+        if accelerator.is_main_process:
+            output_dir = os.path.join(training_config.output_path, f"checkpoint-epoch-{epoch}")
+            shutil.copytree(training_config.model_path, output_dir, dirs_exist_ok=True)
+
+            input_config_file = os.path.join(training_config.model_path, "config.json")
             output_config_file = os.path.join(output_dir, "config.json")
             with open(input_config_file, "r", encoding="utf-8") as f:
                 config_dict = json.load(f)
             config_dict["tts_model_type"] = "custom_voice"
             talker_config = config_dict.get("talker_config", {})
-            talker_config["spk_id"] = {config.speaker_name: 3000}
-            talker_config["spk_is_dialect"] = {config.speaker_name: False}
+            talker_config["spk_id"] = {training_config.speaker_name: 3000}
+            talker_config["spk_is_dialect"] = {training_config.speaker_name: False}
             config_dict["talker_config"] = talker_config
 
             with open(output_config_file, "w", encoding="utf-8") as f:
@@ -152,3 +263,5 @@ def finetune(model, dataset):
             )
             save_path = os.path.join(output_dir, "model.safetensors")
             save_file(state_dict, save_path)
+
+    accelerator.end_training()

@@ -1,4 +1,5 @@
 import argparse
+import dotenv
 
 from transformers import AutoConfig
 
@@ -16,6 +17,8 @@ if __name__ == "__main__":
     )
 
     args = parser.parse_args()
+
+    dotenv.load_dotenv()
 
     config = load_config(args.config)
 

@@ -22,6 +22,7 @@ class TrainingConfig(BaseModel):
     speaker_name: str
     output_path: str = "./output"
     gradient_accumulation_steps: int = 1
+    enable_tracking: bool = False
 
 
 class DatasetConfig(BaseModel):
@@ -31,21 +32,33 @@ class DatasetConfig(BaseModel):
     transcript_column: str = "transcript"
     speaker_column: str = "speaker"
     speaker_name: str | None
+    save_processed: bool = False
+
+
+class WandbConfig(BaseModel):
+    """wandb / experiment tracking settings (integrated via accelerate)."""
+
+    project: str = "genshinvox"
+    entity: str | None = None
+    run_name: str | None = None
+    mode: str = "online"  # "online" | "offline" | "disabled"
+    log_every_n_steps: int = 10
 
 
 class ProcessConfig(BaseModel):
     top_db_to_trim: int = 30
     target_sample_rate: int = 24000
-    select_ref_audio_strategy: SelectRefStrategy = "random"
+    select_ref_audio_strategy: SelectRefStrategy = "good enough"
     ref_audio_min_duration: float = 5
     ref_audio_max_duration: float = 15
 
 
 class BaseConfig(BaseModel):
-    lora: LoraConfig
+    lora: LoraConfig | None = None
     training: TrainingConfig
     dataset: DatasetConfig
     process: ProcessConfig
+    wandb: WandbConfig | None = None
 
 
 __base_config = None
