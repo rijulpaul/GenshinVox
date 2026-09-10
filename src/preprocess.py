@@ -28,7 +28,9 @@ def preprocess(dataset):
         lambda x: bool(re.search(r"[a-zA-Z]", x[dataset_config.transcript_column]))
     )
 
-    process_audio = partial(__process_audio, Placeholder, process_config)
+    process_audio = partial(
+        __process_audio, Placeholder, process_config, dataset_config.audio_column
+    )
     dataset = dataset.map(process_audio)
 
     return dataset
@@ -61,8 +63,8 @@ def __trim(array, top_db):
     return trimmed
 
 
-def __process_audio(example, process_config):
-    audio = example["audio"]
+def __process_audio(example, process_config, audio_column):
+    audio = example[audio_column]
 
     array = np.asarray(audio["array"], dtype=np.float32)
 
