@@ -25,8 +25,8 @@ def extract_feature(dataset, processor, tokenizer):
     ref_idx = None
     ref_duration = 0.0
 
-    if (select_ref_strategy == "random"):
-        ref_idx = random.randint(0,search_size-1)
+    if select_ref_strategy == "random":
+        ref_idx = random.randint(0, search_size - 1)
         audio = dataset[ref_idx][audio_column]
         ref_duration = len(audio["array"]) / audio["sampling_rate"]
     else:
@@ -38,10 +38,14 @@ def extract_feature(dataset, processor, tokenizer):
 
             duration = len(audio["array"]) / audio["sampling_rate"]
 
-            if duration <= ref_max_duration and duration > ref_min_duration and duration > ref_duration:
+            if (
+                duration <= ref_max_duration
+                and duration > ref_min_duration
+                and duration > ref_duration
+            ):
                 ref_idx = i
                 ref_duration = duration
-                if (select_ref_strategy == "good enough"):
+                if select_ref_strategy == "good enough":
                     break
 
         if ref_idx is None:
@@ -49,7 +53,9 @@ def extract_feature(dataset, processor, tokenizer):
 
     ref_audio = dataset[ref_idx][audio_column]
 
-    print(f"Using index {ref_idx} as reference\n Duration: {ref_duration:.2f}s\n Selection Strategy: {select_ref_strategy}")
+    print(
+        f"Using index {ref_idx} as reference\n Duration: {ref_duration:.2f}s\n Selection Strategy: {select_ref_strategy}"
+    )
 
     dataset = dataset.filter(
         lambda _, idx: idx != ref_idx,
