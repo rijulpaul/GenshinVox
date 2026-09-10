@@ -23,7 +23,6 @@ def _tracker_config(config):
         "speaker_name": config.speaker_name,
         "model": config.model,
         "model_path": config.model_path,
-        "output_path": config.output_path,
     }
 
 
@@ -43,10 +42,57 @@ def _setup_tracker(accelerator, training_config, wandb_config):
     )
 
 
+def _upload_checkpoint_to_hf(config, output_dir, epoch, global_step):
+    """Upload a saved checkpoint directory to the Hugging Face Hub."""
+    from huggingface_hub import create_repo, upload_folder
+
+    if not config.upload_to_hub or epoch % config.upload_every_n_epochs != 0:
+        return
+
+    if not config.repo_id:
+        raise ValueError("hf.repo_id is required to upload checkpoints to the Hub")
+
+    token = os.environ["HF_TOKEN"]
+
+    if not token:
+        raise ValueError(
+            "Environment variable HF_TOKEN with hugging face api key needed to authenticate"
+        )
+
+    create_repo(
+        repo_id=config.repo_id,
+        repo_type="model",
+        private=config.private,
+        exist_ok=True,
+        token=token,
+    )
+
+    commit_message = (
+        config.commit_message.format(epoch=epoch, global_step=global_step)
+        or f"Upload checkpoint-epoch-{epoch}"
+    )
+
+    path_in_repo = None
+    if config.path_in_repo:
+        path_in_repo = config.path_in_repo.format(epoch=epoch, global_step=global_step)
+    upload_folder(
+        repo_id=config.repo_id,
+        repo_type="model",
+        folder_path=output_dir,
+        revision=config.revision,
+        commit_message=commit_message,
+        path_in_repo=path_in_repo,
+        token=config.token,
+    )
+
+
 def finetune(model, dataset):
 
-    training_config = get_config().training
-    wandb_config = get_config().wandb
+    config = get_config()
+    training_config = config.training
+    wandb_config = config.wandb
+    model_ckpt_config = training_config.model_checkpoint
+    train_ckpt_config = training_config.training_checkpoint
 
     dataloader = DataLoader(
         dataset,
@@ -54,6 +100,7 @@ def finetune(model, dataset):
         shuffle=True,
         collate_fn=dataset.collate_fn,
     )
+
     optimizer = AdamW(
         model.model.parameters(),
         lr=training_config.lr,
@@ -69,12 +116,16 @@ def finetune(model, dataset):
         log_with="wandb",
     )
 
-    if training_config.enable_tracking:
+    if training_config.enable_experiment_tracking:
         _setup_tracker(accelerator, training_config, wandb_config)
 
     model, optimizer, dataloader = accelerator.prepare(
         model.model, optimizer, dataloader
     )
+
+    # Resume training from a checkpoint
+    if training_config.resume_training_path:
+        accelerator.load_state(training_config.resume_training_path)
 
     model.train()
 
@@ -93,6 +144,7 @@ def finetune(model, dataset):
         epoch_samples = 0
 
         for step, batch in enumerate(dataloader):
+            break
             with accelerator.accumulate(model):
                 input_ids = batch["input_ids"]
                 codec_ids = batch["codec_ids"]
@@ -144,7 +196,7 @@ def finetune(model, dataset):
                     output_hidden_states=True,
                 )
 
-                hidden_states = outputs.hidden_states[0][-1][:,:-1,:]
+                hidden_states = outputs.hidden_states[0][-1][:, :-1, :]
                 talker_hidden_states = hidden_states[codec_mask[:, 1:]]
                 talker_codec_ids = codec_ids[codec_mask]
 
@@ -160,9 +212,7 @@ def finetune(model, dataset):
 
                 grad_norm = None
                 if accelerator.sync_gradients:
-                    grad_norm = accelerator.clip_grad_norm_(
-                        model.parameters(), 1.0
-                    )
+                    grad_norm = accelerator.clip_grad_norm_(model.parameters(), 1.0)
                     if grad_norm is not None:
                         grad_norm = grad_norm.item()
 
@@ -186,7 +236,7 @@ def finetune(model, dataset):
             if accelerator.sync_gradients:
                 global_step += 1
                 if (
-                    training_config.enable_tracking
+                    training_config.enable_experiment_tracking
                     and global_step % wandb_config.log_every_n_steps == 0
                 ):
                     accelerator.log(
@@ -212,16 +262,14 @@ def finetune(model, dataset):
                     f"Epoch {epoch} | Step {step} | Loss: {loss_value:.4f}"
                 )
 
-        if training_config.enable_tracking:
+        if training_config.enable_experiment_tracking:
             epoch_duration = time.perf_counter() - epoch_start
             accelerator.log(
                 {
                     "epoch/epoch": epoch,
                     "epoch/loss": epoch_loss / len(dataloader),
                     "epoch/talker_loss": epoch_talker_loss / len(dataloader),
-                    "epoch/sub_talker_loss": (
-                        epoch_sub_talker_loss / len(dataloader)
-                    ),
+                    "epoch/sub_talker_loss": (epoch_sub_talker_loss / len(dataloader)),
                     "epoch/duration_sec": epoch_duration,
                     "epoch/samples_per_sec": (
                         epoch_samples / epoch_duration if epoch_duration > 0 else 0.0
@@ -231,37 +279,87 @@ def finetune(model, dataset):
             )
 
         if accelerator.is_main_process:
-            output_dir = os.path.join(training_config.output_path, f"checkpoint-epoch-{epoch}")
-            shutil.copytree(training_config.model_path, output_dir, dirs_exist_ok=True)
+            accelerator.wait_for_everyone()
 
-            input_config_file = os.path.join(training_config.model_path, "config.json")
-            output_config_file = os.path.join(output_dir, "config.json")
-            with open(input_config_file, "r", encoding="utf-8") as f:
-                config_dict = json.load(f)
-            config_dict["tts_model_type"] = "custom_voice"
-            talker_config = config_dict.get("talker_config", {})
-            talker_config["spk_id"] = {training_config.speaker_name: 3000}
-            talker_config["spk_is_dialect"] = {training_config.speaker_name: False}
-            config_dict["talker_config"] = talker_config
+            # Save Training Checkpoint Locally
+            if train_ckpt_config and epoch % train_ckpt_config.save_every_n_epochs == 0:
+                accelerator.save_state(
+                    train_ckpt_config.output_path.format(
+                        epoch=epoch, global_step=global_step
+                    )
+                )
 
-            with open(output_config_file, "w", encoding="utf-8") as f:
-                json.dump(config_dict, f, indent=2, ensure_ascii=False)
+            # Save model checkpoint Locally
+            if epoch % model_ckpt_config.save_every_n_epochs == 0:
+                output_dir = os.path.join(
+                    model_ckpt_config.output_path.format(
+                        epoch=epoch, global_step=global_step
+                    )
+                )
 
-            unwrapped_model = accelerator.unwrap_model(model)
-            state_dict = {
-                k: v.detach().to("cpu") for k, v in unwrapped_model.state_dict().items()
-            }
+                shutil.copytree(
+                    training_config.model_path, output_dir, dirs_exist_ok=True
+                )
 
-            drop_prefix = "speaker_encoder"
-            keys_to_drop = [k for k in state_dict.keys() if k.startswith(drop_prefix)]
-            for k in keys_to_drop:
-                del state_dict[k]
+                input_config_file = os.path.join(
+                    training_config.model_path, "config.json"
+                )
+                output_config_file = os.path.join(output_dir, "config.json")
+                with open(input_config_file, "r", encoding="utf-8") as f:
+                    config_dict = json.load(f)
+                    config_dict["tts_model_type"] = "custom_voice"
+                    talker_config = config_dict.get("talker_config", {})
+                    talker_config["spk_id"] = {training_config.speaker_name: 3000}
+                    talker_config["spk_is_dialect"] = {
+                        training_config.speaker_name: False
+                    }
+                    config_dict["talker_config"] = talker_config
 
-            weight = state_dict["talker.model.codec_embedding.weight"]
-            state_dict["talker.model.codec_embedding.weight"][3000] = (
-                target_speaker_embedding[0].detach().to(weight.device).to(weight.dtype)
-            )
-            save_path = os.path.join(output_dir, "model.safetensors")
-            save_file(state_dict, save_path)
+                with open(output_config_file, "w", encoding="utf-8") as f:
+                    json.dump(config_dict, f, indent=2, ensure_ascii=False)
+
+                unwrapped_model = accelerator.unwrap_model(model)
+                state_dict = {
+                    k: v.detach().to("cpu")
+                    for k, v in unwrapped_model.state_dict().items()
+                }
+
+                drop_prefix = "speaker_encoder"
+                keys_to_drop = [
+                    k for k in state_dict.keys() if k.startswith(drop_prefix)
+                ]
+                for k in keys_to_drop:
+                    del state_dict[k]
+
+                weight = state_dict["talker.model.codec_embedding.weight"]
+                state_dict["talker.model.codec_embedding.weight"][3000] = (
+                    target_speaker_embedding[0]
+                    .detach()
+                    .to(weight.device)
+                    .to(weight.dtype)
+                )
+                save_path = os.path.join(output_dir, "model.safetensors")
+                save_file(state_dict, save_path)
+
+            # --- upload checkpoints to Hugging Face Hub ---
+            for ckpt_config in [model_ckpt_config, train_ckpt_config]:
+                try:
+                    output_dir = os.path.join(
+                        ckpt_config.output_path.format(
+                            epoch=epoch, global_step=global_step
+                        )
+                    )
+                    _upload_checkpoint_to_hf(
+                        ckpt_config, output_dir, epoch, global_step
+                    )
+                    accelerator.print(
+                        f"Uploaded {output_dir} to Hugging Face Hub: "
+                        f"{ckpt_config.repo_id}"
+                    )
+                except Exception as exc:
+                    accelerator.print(
+                        "Warning: failed to upload checkpoint to Hugging Face Hub: "
+                        f"{exc}"
+                    )
 
     accelerator.end_training()

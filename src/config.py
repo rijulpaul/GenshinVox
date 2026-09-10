@@ -3,8 +3,8 @@ from peft import LoraConfig
 from typing import Literal
 import json
 
-SelectRefStrategy = Literal["random", "good enough", "best possible"]
-WandbMode = Literal["online","offline","disabled"]
+SelectRefStrategy = Literal["random", "good enough", "best"]
+WandbMode = Literal["online", "offline", "disabled"]
 
 
 class TrainingConfig(BaseModel):
@@ -21,9 +21,11 @@ class TrainingConfig(BaseModel):
     tokenizer_path: str = "./tokenizer"
     attn_implementation: str = "sdpa"
     speaker_name: str
-    output_path: str = "./output"
     gradient_accumulation_steps: int = 1
-    enable_tracking: bool = False
+    enable_experiment_tracking: bool = False
+    model_checkpoint: CheckpointConfig
+    training_checkpoint: CheckpointConfig | None = None
+    resume_training_path: str | None = None
 
 
 class DatasetConfig(BaseModel):
@@ -41,8 +43,22 @@ class WandbConfig(BaseModel):
     project: str = "genshinvox"
     entity: str | None = None
     run_name: str | None = None
-    mode: str = "online"  # "online" | "offline" | "disabled"
+    mode: WandbMode = "online"  # "online" | "offline" | "disabled"
     log_every_n_steps: int = 10
+
+
+class CheckpointConfig(BaseModel):
+    save_every_n_epochs: int = 1
+    output_path: str = "./output"
+    upload_to_hub: bool = False
+    repo_id: str | None = None
+    private: bool = False
+    revision: str = "main"  # branch name
+    path_in_repo: str | None = None  # subfolder inside the repo; supports {epoch}
+    commit_message: str = (
+        "Upload checkpoint-epoch-{epoch}"  # supports {epoch}, {global_step}
+    )
+    upload_every_n_epochs: int = 1
 
 
 class ProcessConfig(BaseModel):

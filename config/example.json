@@ -26,10 +26,32 @@
     "tokenizer": "Qwen/Qwen3-TTS-Tokenizer-12Hz",
     "tokenizer_path": "./tokenizer",
     "attn_implementation": "sdpa",
-    "output_path": "./output",
     "speaker_name": "Test Speaker",
     "gradient_accumulation_steps": 2,
-    "enable_tracking": "True"
+    "enable_experiment_tracking": "True",
+    "model_checkpoint": {
+      "save_every_n_epochs": 1,
+      "output_path": "output/model",
+      "upload_to_hub": "False",
+      "upload_every_n_epochs": 1,
+      "repo_id": "test/model",
+      "private": "False",
+      "revision": "main",
+      "path_in_repo": ".",
+      "commit_message": "Upload checkpoint Epoch {epoch} Steps {global_step}"
+    },
+    "training_checkpoint": {
+      "save_every_n_epochs": 1,
+      "output_path": "output/train",
+      "upload_to_hub": "False",
+      "upload_every_n_epochs": 1,
+      "repo_id": "test/train",
+      "private": "False",
+      "revision": "main",
+      "path_in_repo": ".",
+      "commit_message": "Upload checkpoint Epoch {epoch} Steps {global_step}"
+    },
+    "resume_training_path": ""
   },
   "dataset": {
     "dataset": "rijulpaul/genshin-voice",
