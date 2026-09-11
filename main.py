@@ -14,7 +14,7 @@ from src.extract_feature import extract_feature
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "--config", required=True, help="Load config from the specified JSON file."
+        "--config", required=True, help="Load config from a JSON or YAML file."
     )
 
     args = parser.parse_args()
