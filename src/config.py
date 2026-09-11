@@ -35,6 +35,7 @@ class DatasetConfig(BaseModel):
     transcript_column: str = "transcript"
     speaker_column: str = "speaker"
     speaker_name: str | None
+    is_processed: bool = False
 
 
 class WandbConfig(BaseModel):

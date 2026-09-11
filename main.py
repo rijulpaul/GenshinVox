@@ -5,6 +5,7 @@ from transformers import AutoConfig
 
 from src.config import load_config
 from src.finetune import finetune
+from src.peft import get_peft_model
 from src.model import load_model, load_tokenizer
 from src.dataset import load_dataset, TTSDataset
 from src.preprocess import preprocess
@@ -23,16 +24,21 @@ if __name__ == "__main__":
     config = load_config(args.config)
 
     dataset = load_dataset()
-    dataset = preprocess(dataset)
+    if not config.dataset.is_processed:
+        dataset = preprocess(dataset)
 
-    tokenizer = load_tokenizer()
     model = load_model()
+    tokenizer = load_tokenizer()
 
-    config = AutoConfig.from_pretrained(config.training.model)
+    model_config = AutoConfig.from_pretrained(config.training.model)
 
     dataset, ref_mel = extract_feature(
         dataset=dataset, tokenizer=tokenizer, processor=model.processor
     )
-    dataset = TTSDataset(dataset, model.processor, ref_mel, config)
+    dataset = TTSDataset(dataset, model.processor, ref_mel, model_config)
+
+    if config.lora:
+        print("LoRa Finetuning Enabled")
+        model.model = get_peft_model(model.model)
 
     finetune(model, dataset)

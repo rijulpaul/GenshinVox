@@ -59,7 +59,8 @@
     "audio_column": "audio",
     "transcript_column": "transcription",
     "speaker_column": "speaker",
-    "speaker_name": "Paimon"
+    "speaker_name": "Paimon",
+    "is_processed": "False"
   },
   "process": {
     "top_db_to_trim": 30,
