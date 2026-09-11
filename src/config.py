@@ -1,7 +1,6 @@
 from pydantic import BaseModel
 from peft import LoraConfig
 from typing import Literal
-import json
 
 SelectRefStrategy = Literal["random", "good enough", "best"]
 WandbMode = Literal["online", "offline", "disabled"]
@@ -82,11 +81,28 @@ __base_config = None
 
 
 def load_config(config_file: str):
+    """Load a config from a .json, .yaml, or .yml file."""
     global __base_config
-    with open(config_file, "r") as file:
-        config = json.load(file)
-    __base_config = BaseConfig(**config)
+    raw_config = _read_config_file(config_file)
+    __base_config = BaseConfig(**raw_config)
     return __base_config
+
+
+def _read_config_file(config_file: str):
+    """Parse a config file, dispatching on its file extension."""
+    from pathlib import Path
+    path = Path(config_file)
+
+    if path.suffix.lower() in {".yaml", ".yml"}:
+        import yaml
+        with open(path, "r", encoding="utf-8") as file:
+            return yaml.safe_load(file)
+    elif path.suffix.lower() in {".json"}:
+        import json
+        with open(path, "r", encoding="utf-8") as file:
+            return json.load(file)
+    else:
+        raise ValueError(f"Unsupport format for {config_file} use .yaml, .yml or .json extensions only")
 
 
 def get_config():
