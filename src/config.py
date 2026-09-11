@@ -44,7 +44,7 @@ class WandbConfig(BaseModel):
     project: str = "genshinvox"
     entity: str | None = None
     run_name: str | None = None
-    mode: WandbMode = "online"  # "online" | "offline" | "disabled"
+    mode: WandbMode = "offline"  # "online" | "offline" | "disabled"
     log_every_n_steps: int = 10
 
 
@@ -75,7 +75,7 @@ class BaseConfig(BaseModel):
     training: TrainingConfig
     dataset: DatasetConfig
     process: ProcessConfig
-    wandb: WandbConfig | None = None
+    wandb: WandbConfig
 
 
 __base_config = None

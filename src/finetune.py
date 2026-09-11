@@ -1,45 +1,12 @@
 import os, shutil, json, time, copy
 
 from src.config import get_config
+from src.experiment_tracking import setup_tracker
 
 from accelerate import Accelerator
 from safetensors.torch import save_file
 from torch.utils.data import DataLoader
 from torch.optim import AdamW
-
-
-def _tracker_config(config):
-    """Flatten the training config into a dict for wandb hyperparameter logging."""
-    return {
-        "lr": config.lr,
-        "beta1": config.betas[0],
-        "beta2": config.betas[1],
-        "eps": config.eps,
-        "weight_decay": config.weight_decay,
-        "amsgrad": config.amsgrad,
-        "epochs": config.epochs,
-        "batch_size": config.batch_size,
-        "gradient_accumulation_steps": config.gradient_accumulation_steps,
-        "speaker_name": config.speaker_name,
-        "model": config.model,
-        "model_path": config.model_path,
-    }
-
-
-def _setup_tracker(accelerator, training_config, wandb_config):
-    """Initialize a wandb tracker through accelerate (no-op if disabled)."""
-    init_kwargs = {"wandb": {}}
-    if wandb_config.entity:
-        init_kwargs["wandb"]["entity"] = wandb_config.entity
-    if wandb_config.run_name:
-        init_kwargs["wandb"]["name"] = wandb_config.run_name
-    if wandb_config.mode:
-        init_kwargs["wandb"]["mode"] = wandb_config.mode
-    accelerator.init_trackers(
-        wandb_config.project,
-        config=_tracker_config(training_config),
-        init_kwargs=init_kwargs,
-    )
 
 
 def _upload_checkpoint_to_hf(config, output_dir, epoch, global_step):
@@ -117,7 +84,7 @@ def finetune(model, dataset):
     )
 
     if training_config.enable_experiment_tracking:
-        _setup_tracker(accelerator, training_config, wandb_config)
+        setup_tracker(accelerator)
 
     model, optimizer, dataloader = accelerator.prepare(
         model.model, optimizer, dataloader
