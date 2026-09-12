@@ -1,7 +1,12 @@
 import os, shutil, json, time, copy
+import numpy as np
+import soundfile as sf
 
 from src.config import get_config
+from src.eval import calculate_speaker_similarity, calculate_word_error_rate
 from src.experiment_tracking import setup_tracker
+
+from qwen_tts.qwen_tts import Qwen3TTSModel
 
 from accelerate import Accelerator
 from safetensors.torch import save_file
@@ -34,14 +39,12 @@ def _upload_checkpoint_to_hf(config, output_dir, epoch, global_step):
         token=token,
     )
 
-    commit_message = (
-        config.commit_message.format(epoch=epoch, global_step=global_step)
-        or f"Upload checkpoint-epoch-{epoch}"
-    )
+    commit_message = config.commit_message.format(epoch=f"{epoch:03d}", global_step=global_step)
 
     path_in_repo = None
     if config.path_in_repo:
-        path_in_repo = config.path_in_repo.format(epoch=epoch, global_step=global_step)
+        path_in_repo = config.path_in_repo.format(epoch=f"{epoch:03d}", global_step=global_step)
+
     upload_folder(
         repo_id=config.repo_id,
         repo_type="model",
@@ -53,7 +56,7 @@ def _upload_checkpoint_to_hf(config, output_dir, epoch, global_step):
     )
 
 
-def finetune(model, dataset):
+def finetune(model, train_dataset, test_dataset):
 
     config = get_config()
     training_config = config.training
@@ -62,10 +65,10 @@ def finetune(model, dataset):
     train_ckpt_config = training_config.training_checkpoint
 
     dataloader = DataLoader(
-        dataset,
+        train_dataset,
         batch_size=training_config.batch_size,
         shuffle=True,
-        collate_fn=dataset.collate_fn,
+        collate_fn=train_dataset.collate_fn,
     )
 
     optimizer = AdamW(
@@ -225,7 +228,7 @@ def finetune(model, dataset):
 
             if step % 10 == 0:
                 accelerator.print(
-                    f"Epoch {epoch} | Step {step} | Loss: {loss_value:.4f}"
+                    f"Epoch {epoch:03d} | Step {step} | Loss: {loss_value:.4f}"
                 )
 
         if training_config.enable_experiment_tracking:
@@ -251,17 +254,17 @@ def finetune(model, dataset):
             if train_ckpt_config and epoch % train_ckpt_config.save_every_n_epochs == 0:
                 accelerator.save_state(
                     train_ckpt_config.output_path.format(
-                        epoch=epoch, global_step=global_step
+                        epoch=f"{epoch:03d}", global_step=global_step
                     )
                 )
 
-            # Save model checkpoint Locally
+            # Save model checkpoint Locally and setup for inference
             if epoch % model_ckpt_config.save_every_n_epochs == 0:
                 unwrapped_model = accelerator.unwrap_model(model)
 
                 output_dir = os.path.join(
                     model_ckpt_config.output_path.format(
-                        epoch=epoch, global_step=global_step
+                        epoch=f"{epoch:03d}", global_step=global_step
                     )
                 )
 
@@ -318,12 +321,53 @@ def finetune(model, dataset):
                 else:
                     build_and_save_model_ckpt(output_dir,unwrapped_model)
 
+            if config.testing and test_dataset:
+                # Load the model checkpoint and test
+                tts = Qwen3TTSModel.from_pretrained(
+                    model_ckpt_config.output_path.format(
+                        epoch=f"{epoch:03d}", global_step=global_step
+                    ),
+                    device_map="auto",
+                    attn_implementation=training_config.attn_implementation,
+                )
+
+                idx = 0
+                eval_log = dict()
+                for example in test_dataset:
+                    # use each test dataset transcript to generate audio.
+                    wavs, sr = tts.generate_custom_voice(
+                        text=example[config.dataset.transcript_column],
+                        speaker=training_config.speaker_name,
+                    )
+
+                    base_audio = example[config.dataset.audio_column]
+                    generated_audio = {
+                        "array": wavs[0].astype(np.float32),
+                        "sampling_rate": sr,
+                    }
+
+                    if config.testing.word_error_rate:
+                        wer = calculate_word_error_rate(base_audio, generated_audio)
+                        eval_log["eval/word_error_rate"] += (wer/len(test_dataset))
+
+                    if config.testing.speaker_similarity:
+                        ss = calculate_speaker_similarity(base_audio, generated_audio)
+                        eval_log["eval/speaker_similarity"] += (ss/len(test_dataset))
+
+                    if config.testing.save_samples:
+                        sf.write(os.path.join(config.testing.output_path.format(epoch=f"{epoch:03d}",global_step=global_step),f"{idx:03d}.wav"),wavs[0],sr)
+
+                accelerator.log(
+                    eval_log,
+                    step=global_step
+                )
+
             # --- upload checkpoints to Hugging Face Hub ---
             for ckpt_config in [model_ckpt_config, train_ckpt_config]:
                 try:
                     output_dir = os.path.join(
                         ckpt_config.output_path.format(
-                            epoch=epoch, global_step=global_step
+                            epoch=f"{epoch:03d}", global_step=global_step
                         )
                     )
                     _upload_checkpoint_to_hf(

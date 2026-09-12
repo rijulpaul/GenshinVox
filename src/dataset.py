@@ -139,22 +139,51 @@ from src.config import get_config
 
 
 def load_dataset():
+    """
+    Returns  (train_dataset, test_dataset)
+    train/test split generated based on config.
+    test_dataset can be None
+    """
     config = get_config().dataset
     dataset = None
     if config.local_path:
         try:
             dataset = ld(
                 "parquet",
-                data_files={"train": config.local_path + "/*.parquet"},
-                split="train",
+                data_files={config.train_split: config.local_path + "/*.parquet"},
             )
             print(f"Successfully loaded dataset at {config.local_path}")
         except Exception:
             print(f"Dataset not found at {config.local_path}")
             print(f"Downloading dataset into {config.local_path}")
-            dataset = ld(config.dataset, split="train")
+            dataset = ld(config.dataset)
     else:
-        dataset = ld(config.dataset, split="train")
+        dataset = ld(config.dataset)
 
-    dataset = dataset.cast_column(config.audio_column, Audio(decode=True))
-    return dataset
+    if config.test_split:
+        test_dataset = dataset[config.test_split]
+        train_dataset = dataset[config.train_split]
+    else:
+        if config.test_size > 0:
+            dataset = dataset[config.train_split].train_test_split(
+                test_size=config.test_size,
+                seed=42
+            )
+            train_dataset = dataset["train"]
+            test_dataset = dataset["test"]
+        else:
+            train_dataset = dataset[config.train_split]
+            test_dataset = None
+
+    train_dataset = train_dataset.cast_column(
+        config.audio_column,
+        Audio(decode=True)
+    )
+
+    if test_dataset:
+        test_dataset = test_dataset.cast_column(
+            config.audio_column,
+            Audio(decode=True)
+        )
+
+    return train_dataset, test_dataset

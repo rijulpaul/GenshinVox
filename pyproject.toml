@@ -10,8 +10,11 @@ dependencies = [
     "dotenv>=0.9.9",
     "hf-xet>=1.6.0",
     "huggingface-hub>=0.36.2",
+    "jiwer>=4.0.0",
     "librosa>=1.0.0",
+    "openai-whisper>=20250625",
     "peft>=0.20.0",
+    "pyannote-audio>=4.0.7",
     "pydantic>=2.13.4",
     "pyyaml>=6.0.3",
     "qwen-tts",
@@ -19,7 +22,6 @@ dependencies = [
     "torch>=2.13.0",
     "torchaudio>=2.11.0",
     "torchcodec>=0.16.0",
-    "torchvision>=0.28.0",
     "wandb>=0.29.0",
 ]
 
@@ -39,3 +41,6 @@ qwen-tts = { workspace = true }
 members = [
     "qwen_tts",
 ]
+
+[tool.uv.extra-build-dependencies]
+flash-attn = ["torch"]
