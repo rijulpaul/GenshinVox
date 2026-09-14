@@ -1,4 +1,4 @@
-import os, shutil, json, time, copy
+import os, shutil, json, time
 import numpy as np
 import soundfile as sf
 
@@ -201,13 +201,10 @@ def finetune(model, train_dataset, test_dataset):
             epoch_talker_loss += talker_loss_value
             epoch_sub_talker_loss += sub_talker_loss_value
             epoch_samples += batch["input_ids"].shape[0]
+            global_step+=1
 
             if accelerator.sync_gradients:
-                global_step += 1
-                if (
-                    training_config.enable_experiment_tracking
-                    and global_step % wandb_config.log_every_n_steps == 0
-                ):
+                if training_config.enable_experiment_tracking:
                     accelerator.log(
                         {
                             "train/loss": running_loss / micro_steps,
@@ -230,7 +227,6 @@ def finetune(model, train_dataset, test_dataset):
                 accelerator.print(
                     f"Epoch {epoch:03d} | Step {step} | Loss: {loss_value:.4f}"
                 )
-
         if training_config.enable_experiment_tracking:
             epoch_duration = time.perf_counter() - epoch_start
             accelerator.log(
@@ -252,11 +248,10 @@ def finetune(model, train_dataset, test_dataset):
 
             # Save Training Checkpoint Locally
             if train_ckpt_config and epoch % train_ckpt_config.save_every_n_epochs == 0:
-                accelerator.save_state(
-                    train_ckpt_config.output_path.format(
-                        epoch=f"{epoch:03d}", global_step=global_step
-                    )
+                output_dir = train_ckpt_config.output_path.format(
+                    epoch=f"{epoch:03d}", global_step=global_step
                 )
+                accelerator.save_state(output_dir)
 
             # Save model checkpoint Locally and setup for inference
             if epoch % model_ckpt_config.save_every_n_epochs == 0:
@@ -268,58 +263,49 @@ def finetune(model, train_dataset, test_dataset):
                     )
                 )
 
-                def build_and_save_model_ckpt(output_dir, model):
-                    shutil.copytree(
-                        training_config.model_path, output_dir, dirs_exist_ok=True
-                    )
+                shutil.copytree(
+                    training_config.model_path, output_dir, dirs_exist_ok=True
+                )
 
-                    input_config_file = os.path.join(
-                        training_config.model_path, "config.json"
-                    )
-                    output_config_file = os.path.join(output_dir, "config.json")
-                    with open(input_config_file, "r", encoding="utf-8") as f:
-                        config_dict = json.load(f)
-                        config_dict["tts_model_type"] = "custom_voice"
-                        talker_config = config_dict.get("talker_config", {})
-                        talker_config["spk_id"] = {training_config.speaker_name: 3000}
-                        talker_config["spk_is_dialect"] = {
-                        training_config.speaker_name: False
-                        }
-                        config_dict["talker_config"] = talker_config
-
-                    with open(output_config_file, "w", encoding="utf-8") as f:
-                        json.dump(config_dict, f, indent=2, ensure_ascii=False)
-
-
-                    state_dict = {
-                        k: v.detach().to("cpu")
-                        for k, v in model.state_dict().items()
+                input_config_file = os.path.join(
+                    training_config.model_path, "config.json"
+                )
+                output_config_file = os.path.join(output_dir, "config.json")
+                with open(input_config_file, "r", encoding="utf-8") as f:
+                    config_dict = json.load(f)
+                    config_dict["tts_model_type"] = "custom_voice"
+                    talker_config = config_dict.get("talker_config", {})
+                    talker_config["spk_id"] = {training_config.speaker_name: 3000}
+                    talker_config["spk_is_dialect"] = {
+                    training_config.speaker_name: False
                     }
+                    config_dict["talker_config"] = talker_config
 
-                    drop_prefix = "speaker_encoder"
-                    keys_to_drop = [
-                        k for k in state_dict.keys() if k.startswith(drop_prefix)
-                    ]
-                    for k in keys_to_drop:
-                        del state_dict[k]
+                with open(output_config_file, "w", encoding="utf-8") as f:
+                    json.dump(config_dict, f, indent=2, ensure_ascii=False)
 
-                    weight = state_dict["talker.model.codec_embedding.weight"]
-                    state_dict["talker.model.codec_embedding.weight"][3000] = (
-                        target_speaker_embedding[0]
-                        .detach()
-                        .to(weight.device)
-                        .to(weight.dtype)
-                    )
-                    save_path = os.path.join(output_dir, "model.safetensors")
-                    save_file(state_dict, save_path)
 
-                if config.lora:
-                    # Create a copy so training model remains a PEFT model
-                    merged_model = copy.deepcopy(unwrapped_model)
-                    merged_model = merged_model.merge_and_unload()
-                    build_and_save_model_ckpt(output_dir,merged_model)
-                else:
-                    build_and_save_model_ckpt(output_dir,unwrapped_model)
+                state_dict = {
+                    k: v.detach().to("cpu")
+                    for k, v in unwrapped_model.state_dict().items()
+                }
+
+                drop_prefix = "speaker_encoder"
+                keys_to_drop = [
+                    k for k in state_dict.keys() if k.startswith(drop_prefix)
+                ]
+                for k in keys_to_drop:
+                    del state_dict[k]
+
+                weight = state_dict["talker.model.codec_embedding.weight"]
+                state_dict["talker.model.codec_embedding.weight"][3000] = (
+                    target_speaker_embedding[0]
+                    .detach()
+                    .to(weight.device)
+                    .to(weight.dtype)
+                )
+                save_path = os.path.join(output_dir, "model.safetensors")
+                save_file(state_dict, save_path)
 
             if config.testing and test_dataset:
                 # Load the model checkpoint and test
