@@ -18,7 +18,7 @@
     "betas": [0.9,0.999],
     "eps": 1e-8,
     "weight_decay": 0.01,
-    "amsgrad": "False",
+    "amsgrad": false,
     "epochs": 1,
     "batch_size": 8,
     "model": "Qwen/Qwen3-TTS-12Hz-0.6B-Base",
@@ -28,14 +28,14 @@
     "attn_implementation": "sdpa",
     "speaker_name": "Test Speaker",
     "gradient_accumulation_steps": 2,
-    "enable_experiment_tracking": "True",
+    "enable_experiment_tracking": true,
     "model_checkpoint": {
       "save_every_n_epochs": 1,
       "output_path": "output/model",
-      "upload_to_hub": "False",
+      "upload_to_hub": false,
       "upload_every_n_epochs": 1,
       "repo_id": "test/model",
-      "private": "False",
+      "private": false,
       "revision": "main",
       "path_in_repo": ".",
       "commit_message": "Upload checkpoint Epoch {epoch} Steps {global_step}"
@@ -43,10 +43,10 @@
     "training_checkpoint": {
       "save_every_n_epochs": 1,
       "output_path": "output/train",
-      "upload_to_hub": "False",
+      "upload_to_hub": false,
       "upload_every_n_epochs": 1,
       "repo_id": "test/train",
-      "private": "False",
+      "private": false,
       "revision": "main",
       "path_in_repo": ".",
       "commit_message": "Upload checkpoint Epoch {epoch} Steps {global_step}"
@@ -55,12 +55,15 @@
   },
   "dataset": {
     "dataset": "rijulpaul/genshin-voice",
+    "subset": "subset",
+    "train_split": "train",
+    "test_split": "test",
     "local_path": ".",
     "audio_column": "audio",
     "transcript_column": "transcription",
     "speaker_column": "speaker",
     "speaker_name": "Paimon",
-    "is_processed": "False"
+    "is_processed": false
   },
   "process": {
     "top_db_to_trim": 30,
@@ -75,5 +78,11 @@
     "run_name":"test run",
     "mode":"offline",
     "log_every_n_steps": 50
+  },
+  "testing": {
+    "word_error_rate": true,
+    "speaker_similarity": true,
+    "save_samples": true,
+    "output_path": "./samples/{epoch}"
   }
 }

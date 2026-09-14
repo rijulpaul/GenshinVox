@@ -156,9 +156,9 @@ def load_dataset():
         except Exception:
             print(f"Dataset not found at {config.local_path}")
             print(f"Downloading dataset into {config.local_path}")
-            dataset = ld(config.dataset)
+            dataset = ld(config.dataset, config.subset)
     else:
-        dataset = ld(config.dataset)
+        dataset = ld(config.dataset, config.subset)
 
     if config.test_split:
         test_dataset = dataset[config.test_split]

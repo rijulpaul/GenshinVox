@@ -18,7 +18,7 @@ class TrainingConfig(BaseModel):
     model_path: str = "./model"     # Required during model checkpoint setup
     tokenizer: str
     tokenizer_path: str = ""
-    attn_implementation: str = "sdpa"
+    attn_implementation: str = "flash-attn"
     speaker_name: str       # The speaker_name to set in the model
     gradient_accumulation_steps: int = 1
     enable_experiment_tracking: bool = False    # Use WandB to track experiment
@@ -29,6 +29,7 @@ class TrainingConfig(BaseModel):
 
 class DatasetConfig(BaseModel):
     dataset: str
+    subset: str | None = None
     train_split: str = "train"
     test_split: str | None = None   # If left empty and TrainingConfig is not None, test split will be generated from original dataset
     test_size: int = 0              # Works only if test_split is None, amount of audio samples to test with, supports fractions and numbers, test_size = 0 skips testing

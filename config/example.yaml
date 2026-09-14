@@ -55,6 +55,9 @@ training:
 
 dataset:
   dataset: "rijulpaul/genshin-voice"
+  subset: "subset"
+  train_split: "train"
+  test_split: "test"
   local_path: "."
   audio_column: "audio"
   transcript_column: "transcription"
@@ -75,3 +78,9 @@ wandb:
   run_name: "test run"
   mode: "offline"
   log_every_n_steps: 50
+
+testing:
+  word_error_rate: true
+  speaker_similarity: true
+  save_samples: true
+  output_path: "./samples/{epoch}"
