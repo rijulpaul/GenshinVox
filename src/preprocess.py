@@ -12,11 +12,15 @@ def preprocess(dataset):
     dataset_config = config.dataset
     process_config = config.process
 
-    # Filter out speaker if a speaker name is given, otherwise use the whole dataset
-    if dataset_config.speaker_name:
-        dataset = dataset.filter(
-            lambda x: x[dataset_config.speaker_column] == dataset_config.speaker_name
-        )
+    def filter(example):
+        # Filter out speaker if a speaker name is given, otherwise use the whole dataset
+        if dataset_config.speaker_name and example[dataset_config.speaker_column] != dataset_config.speaker_name:
+            return False
+        # Remove Transcripts with Player specific replacements
+        return example[dataset_config.transcript_column][0] != "#"
+
+    dataset = dataset.filter(filter)
+
 
     process_text = partial(
         __process_text, Placeholder, dataset_config.transcript_column
@@ -88,16 +92,9 @@ def __process_audio(example, process_config, audio_column):
 def __process_text(example, transcript_column):
     text = example[transcript_column]
 
-    # Remove content enclosed in (), [], or {}
-    text = re.sub(r"\([^)]*\)|\[[^\]]*\]|\{[^}]*\}", "", text)
-
     # Remove HTML/XML-style tags
     text = re.sub(r"<[^>]*>", "", text)
 
-    # Genshin specific replacements
-    text = re.sub(r"{NICKNAME}", "Traveler", text).strip()
-    text = re.sub(r"{F#he}{M#she}", "He", text).strip()
-    text = re.sub(r"{F#his}{M#her}", "his", text).strip()
     text = re.sub(r"\s+", " ", text).strip()
 
     return {transcript_column: text}
