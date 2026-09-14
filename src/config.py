@@ -6,27 +6,6 @@ SelectRefStrategy = Literal["random", "good enough", "best"]
 WandbMode = Literal["online", "offline", "disabled"]
 
 
-class TrainingConfig(BaseModel):
-    lr: float = 2e-6
-    betas: tuple[float, float] = (0.9, 0.999)
-    eps: float = 1e-8
-    weight_decay: float = 0.01
-    amsgrad: bool = False
-    epochs: int
-    batch_size: int
-    model: str
-    model_path: str = "./model"     # Required during model checkpoint setup
-    tokenizer: str
-    tokenizer_path: str = ""
-    attn_implementation: str = "flash-attn"
-    speaker_name: str       # The speaker_name to set in the model
-    gradient_accumulation_steps: int = 1
-    enable_experiment_tracking: bool = False    # Use WandB to track experiment
-    model_checkpoint: CheckpointConfig          # Model Checkpoint save inference ready model with modified state dict and differ from a Training Checkpoint
-    training_checkpoint: CheckpointConfig | None = None     # To enable training resumability
-    resume_training_path: str | None = None
-
-
 class DatasetConfig(BaseModel):
     dataset: str
     subset: str | None = None
@@ -72,6 +51,28 @@ class ProcessConfig(BaseModel):
         # best: selects longest possible audio as reference
     ref_audio_min_duration: float = 5
     ref_audio_max_duration: float = 15
+
+
+class TrainingConfig(BaseModel):
+    lr: float = 2e-6
+    betas: tuple[float, float] = (0.9, 0.999)
+    eps: float = 1e-8
+    weight_decay: float = 0.01
+    amsgrad: bool = False
+    epochs: int
+    batch_size: int
+    model: str
+    model_path: str = "./model"     # Required during model checkpoint setup
+    tokenizer: str
+    tokenizer_path: str = ""
+    attn_implementation: str = "flash-attn"
+    speaker_name: str       # The speaker_name to set in the model
+    gradient_accumulation_steps: int = 1
+    enable_experiment_tracking: bool = False    # Use WandB to track experiment
+    model_checkpoint: CheckpointConfig          # Model Checkpoint save inference ready model with modified state dict and differ from a Training Checkpoint
+    training_checkpoint: CheckpointConfig | None = None     # To enable training resumability
+    resume_training_path: str | None = None
+
 
 class TestingConfig(BaseModel):     # If None, testing is skipped
     word_error_rate: bool = True
