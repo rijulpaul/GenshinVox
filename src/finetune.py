@@ -92,7 +92,6 @@ def finetune(model, train_dataset, test_dataset):
     model, optimizer, dataloader = accelerator.prepare(
         model.model, optimizer, dataloader
     )
-    base_model = model.module if hasattr(model, "module") else model
 
     # Resume training from a checkpoint
     if training_config.resume_training_path:
@@ -125,8 +124,8 @@ def finetune(model, train_dataset, test_dataset):
                 codec_0_labels = batch["codec_0_labels"]
                 codec_mask = batch["codec_mask"]
 
-                speaker_embedding = base_model.speaker_encoder(
-                    ref_mels.to(accelerator.device).to(base_model.dtype)
+                speaker_embedding = model.speaker_encoder(
+                    ref_mels.to(model.device).to(model.dtype)
                 ).detach()
                 if target_speaker_embedding is None:
                     target_speaker_embedding = speaker_embedding
@@ -135,14 +134,14 @@ def finetune(model, train_dataset, test_dataset):
                 input_codec_ids = input_ids[:, :, 1]
 
                 input_text_embedding = (
-                    base_model.talker.text_projection(
-                        base_model.talker.model.text_embedding(input_text_ids)
+                    model.talker.text_projection(
+                        model.talker.model.text_embedding(input_text_ids)
                     )
                     * text_embedding_mask
                 )
 
                 input_codec_embedding = (
-                    base_model.talker.model.codec_embedding(input_codec_ids)
+                    model.talker.model.codec_embedding(input_codec_ids)
                     * codec_embedding_mask
                 )
 
@@ -152,14 +151,14 @@ def finetune(model, train_dataset, test_dataset):
 
                 for i in range(1, 16):
                     codec_i_embedding = (
-                        base_model.talker.code_predictor.get_input_embeddings()[i - 1](
+                        model.talker.code_predictor.get_input_embeddings()[i - 1](
                             codec_ids[:, :, i]
                         )
                     )
                     codec_i_embedding = codec_i_embedding * codec_mask.unsqueeze(-1)
                     input_embeddings = input_embeddings + codec_i_embedding
 
-                outputs = base_model.talker(
+                outputs = model.talker(
                     inputs_embeds=input_embeddings,
                     attention_mask=attention_mask,
                     labels=codec_0_labels,
@@ -171,7 +170,7 @@ def finetune(model, train_dataset, test_dataset):
                 talker_codec_ids = codec_ids[codec_mask]
 
                 sub_talker_logits, sub_talker_loss = (
-                    base_model.talker.forward_sub_talker_finetune(
+                    model.talker.forward_sub_talker_finetune(
                         talker_codec_ids, talker_hidden_states
                     )
                 )
@@ -248,8 +247,8 @@ def finetune(model, train_dataset, test_dataset):
                 step=global_step,
             )
 
-        accelerator.wait_for_everyone()
         if accelerator.is_main_process:
+            accelerator.wait_for_everyone()
 
             # Save Training Checkpoint Locally
             if train_ckpt_config and epoch % train_ckpt_config.save_every_n_epochs == 0:
