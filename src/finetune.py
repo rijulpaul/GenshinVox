@@ -247,8 +247,8 @@ def finetune(model, train_dataset, test_dataset):
                 step=global_step,
             )
 
+        accelerator.wait_for_everyone()
         if accelerator.is_main_process:
-            accelerator.wait_for_everyone()
 
             # Save Training Checkpoint Locally
             if train_ckpt_config and epoch % train_ckpt_config.save_every_n_epochs == 0:
