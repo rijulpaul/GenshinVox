@@ -66,24 +66,20 @@ def extract_feature(dataset, processor, tokenizer):
         desc="Removing reference sample",
     )
 
-    def _process_batch(batch):
+    def _process_batch(example):
 
-        text_ids = [
-            _tokenize_text(text, processor) for text in batch[transcript_column]
-        ]
+        text_id = _tokenize_text(example[transcript_column], processor)
 
-        audios = [x["array"] for x in batch[audio_column]]
+        audios = example[audio_column]["array"]
 
-        codes = tokenizer.encode(audios, sr=processing_config.target_sample_rate)
+        codes = tokenizer.encode([audios], sr=processing_config.target_sample_rate)
 
-        audio_codes = codes.audio_codes
+        audio_code = codes.audio_codes[0]
 
-        return {"audio_codes": audio_codes, "text_ids": text_ids}
+        return {"audio_codes": audio_code, "text_ids": text_id}
 
     encoded = dataset.map(
         _process_batch,
-        batched=True,
-        batch_size=64,
         remove_columns=[audio_column, transcript_column],
         desc="Extracting audio codes",
     )
