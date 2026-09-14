@@ -263,56 +263,54 @@ def finetune(model, train_dataset, test_dataset):
                     )
                 )
 
-                shutil.copytree(
-                    training_config.model_path, output_dir, dirs_exist_ok=True
-                )
-
-                input_config_file = os.path.join(
-                    training_config.model_path, "config.json"
-                )
-                output_config_file = os.path.join(output_dir, "config.json")
-                with open(input_config_file, "r", encoding="utf-8") as f:
-                    config_dict = json.load(f)
-                    config_dict["tts_model_type"] = "custom_voice"
-                    talker_config = config_dict.get("talker_config", {})
-                    talker_config["spk_id"] = {training_config.speaker_name: 3000}
-                    talker_config["spk_is_dialect"] = {
-                    training_config.speaker_name: False
-                    }
-                    config_dict["talker_config"] = talker_config
-
-                with open(output_config_file, "w", encoding="utf-8") as f:
-                    json.dump(config_dict, f, indent=2, ensure_ascii=False)
-
-
-                state_dict = {
-                    k: v.detach().to("cpu")
-                    for k, v in unwrapped_model.state_dict().items()
-                }
-
                 if config.lora:
                     # save adapters
                     unwrapped_model.save_pretrained(output_dir)
-                    unwrapped_model = unwrapped_model.base_model.model
-                    if hasattr(unwrapped_model , "peft_config"):
-                        del unwrapped_model.peft_config
+                else:
+                    shutil.copytree(
+                        training_config.model_path, output_dir, dirs_exist_ok=True
+                    )
 
-                drop_prefix = "speaker_encoder"
-                keys_to_drop = [
-                    k for k in state_dict.keys() if k.startswith(drop_prefix)
-                ]
-                for k in keys_to_drop:
-                    del state_dict[k]
+                    input_config_file = os.path.join(
+                        training_config.model_path, "config.json"
+                    )
+                    output_config_file = os.path.join(output_dir, "config.json")
+                    with open(input_config_file, "r", encoding="utf-8") as f:
+                        config_dict = json.load(f)
+                        config_dict["tts_model_type"] = "custom_voice"
+                        talker_config = config_dict.get("talker_config", {})
+                        talker_config["spk_id"] = {training_config.speaker_name: 3000}
+                        talker_config["spk_is_dialect"] = {
+                            training_config.speaker_name: False
+                        }
+                        config_dict["talker_config"] = talker_config
 
-                weight = state_dict["talker.model.codec_embedding.weight"]
-                state_dict["talker.model.codec_embedding.weight"][3000] = (
-                    target_speaker_embedding[0]
-                    .detach()
-                    .to(weight.device)
-                    .to(weight.dtype)
-                )
-                save_path = os.path.join(output_dir, "model.safetensors")
-                save_file(state_dict, save_path)
+                    with open(output_config_file, "w", encoding="utf-8") as f:
+                        json.dump(config_dict, f, indent=2, ensure_ascii=False)
+
+
+                    state_dict = {
+                        k: v.detach().to("cpu")
+                        for k, v in unwrapped_model.state_dict().items()
+                    }
+
+
+                    drop_prefix = "speaker_encoder"
+                    keys_to_drop = [
+                        k for k in state_dict.keys() if k.startswith(drop_prefix)
+                    ]
+                    for k in keys_to_drop:
+                        del state_dict[k]
+
+                    weight = state_dict["talker.model.codec_embedding.weight"]
+                    state_dict["talker.model.codec_embedding.weight"][3000] = (
+                        target_speaker_embedding[0]
+                        .detach()
+                        .to(weight.device)
+                        .to(weight.dtype)
+                    )
+                    save_path = os.path.join(output_dir, "model.safetensors")
+                    save_file(state_dict, save_path)
 
             # --- upload checkpoints to Hugging Face Hub ---
             for ckpt_config in [model_ckpt_config, train_ckpt_config]:
@@ -341,14 +339,27 @@ def finetune(model, train_dataset, test_dataset):
                     attn_implementation=training_config.attn_implementation,
                 )
 
+                if config.lora:
+                    output_dir = os.path.join(
+                        model_ckpt_config.output_path.format(
+                            epoch=f"{epoch:03d}", global_step=global_step
+                        )
+                    )
+                    model.model.add_adapter(output_dir)
+
                 idx = 0
                 eval_log = {}
                 for example in test_dataset:
                     # use each test dataset transcript to generate audio.
-                    wavs, sr = tts.generate_custom_voice(
+                    if config.lora:
+                        wavs, sr = tts.generate_voice_clone(
                         text=example[config.dataset.transcript_column],
-                        speaker=training_config.speaker_name,
                     )
+                    else:
+                        wavs, sr = tts.generate_custom_voice(
+                            text=example[config.dataset.transcript_column],
+                            speaker=training_config.speaker_name,
+                        )
 
                     base_audio = example[config.dataset.audio_column]
                     generated_audio = {
