@@ -145,20 +145,7 @@ def load_dataset():
     test_dataset can be None
     """
     config = get_config().dataset
-    dataset = None
-    if config.local_path:
-        try:
-            dataset = ld(
-                "parquet",
-                data_files={config.train_split: config.local_path + "/*.parquet"},
-            )
-            print(f"Successfully loaded dataset at {config.local_path}")
-        except Exception:
-            print(f"Dataset not found at {config.local_path}")
-            print(f"Downloading dataset into {config.local_path}")
-            dataset = ld(config.dataset, config.subset)
-    else:
-        dataset = ld(config.dataset, config.subset)
+    dataset = ld(config.dataset, config.subset)
 
     if config.test_split:
         test_dataset = dataset[config.test_split]

@@ -12,7 +12,6 @@ class DatasetConfig(BaseModel):
     train_split: str = "train"
     test_split: str | None = None   # If left empty and TrainingConfig is not None, test split will be generated from original dataset
     test_size: int = 0              # Works only if test_split is None, amount of audio samples to test with, supports fractions and numbers, test_size = 0 skips testing
-    local_path: str | None = None   # Loads all the parquets in the specified directory (!!!wont read sub-directories)
     audio_column: str = "audio"
     transcript_column: str = "transcript"
     speaker_column: str | None = None  # Specify if you want to filter based on a speaker/column
@@ -27,7 +26,6 @@ class WandbConfig(BaseModel):
     entity: str | None = None
     run_name: str | None = None
     mode: WandbMode = "offline"  # "online" | "offline" | "disabled"
-    log_every_n_steps: int = 10
 
 
 class CheckpointConfig(BaseModel):

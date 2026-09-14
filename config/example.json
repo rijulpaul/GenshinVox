@@ -58,7 +58,6 @@
     "subset": "subset",
     "train_split": "train",
     "test_split": "test",
-    "local_path": ".",
     "audio_column": "audio",
     "transcript_column": "transcription",
     "speaker_column": "speaker",
@@ -76,8 +75,7 @@
     "project":"test",
     "entity":"test",
     "run_name":"test run",
-    "mode":"offline",
-    "log_every_n_steps": 50
+    "mode":"offline"
   },
   "testing": {
     "word_error_rate": true,
