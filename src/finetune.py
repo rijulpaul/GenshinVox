@@ -5,6 +5,7 @@ import soundfile as sf
 from src.config import get_config
 from src.eval import calculate_speaker_similarity, calculate_word_error_rate
 from src.experiment_tracking import setup_tracker
+from src.peft import build_state_dict
 
 from qwen_tts.qwen_tts import Qwen3TTSModel
 
@@ -289,6 +290,9 @@ def finetune(model, train_dataset, test_dataset):
                     k: v.detach().to("cpu")
                     for k, v in unwrapped_model.state_dict().items()
                 }
+
+                if config.lora:
+                    state_dict = build_state_dict(state_dict)
 
                 drop_prefix = "speaker_encoder"
                 keys_to_drop = [
