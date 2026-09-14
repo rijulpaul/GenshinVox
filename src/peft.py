@@ -4,12 +4,14 @@ from collections import OrderedDict
 
 
 def get_peft_model(model):
+    peft_config = get_config().lora
     model = gpm(model, peft_config)
     model.print_trainable_parameters()
 
     return model
 
 def build_state_dict(state_dict):
+    config = get_config.lora
     new_state_dict = OrderedDict()
     for k in state_dict:
         lk = k.split('.')
@@ -18,7 +20,7 @@ def build_state_dict(state_dict):
             base = k
             a = k.replace('base_layer','lora_A.default')
             b = k.replace('base_layer','lora_B.default')
-            weights = merge_lora(state_dict[base],state_dict[a],state_dict[b])
+            weights = merge_lora(state_dict[base],state_dict[a],state_dict[b],config.alpha,config.rank)
             nk = k.replace('base_model.model.','')    # Remove 'base_model.model' prefix
             nk = nk.replace('base_layer.','')         # Remove 'base_model.model' prefix
             new_state_dict[nk] = weights
@@ -32,7 +34,7 @@ def build_state_dict(state_dict):
     return new_state_dict
 
 
-def merge_lora(base_weight, lora_A, lora_B, alpha=32, rank=16):
+def merge_lora(base_weight, lora_A, lora_B, alpha, rank):
     scaling = alpha / rank
 
     # LoRA update
