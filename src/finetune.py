@@ -54,6 +54,7 @@ def _upload_checkpoint_to_hf(config, output_dir, epoch, global_step):
         commit_message=commit_message,
         path_in_repo=path_in_repo,
         token=token,
+        ignore_patterns=["*.md"]
     )
 
 
@@ -331,14 +332,6 @@ def finetune(model, train_dataset, test_dataset):
 
             if config.testing and test_dataset:
                 # Load the model checkpoint and test
-                tts = Qwen3TTSModel.from_pretrained(
-                    model_ckpt_config.output_path.format(
-                        epoch=f"{epoch:03d}", global_step=global_step
-                    ),
-                    device_map="auto",
-                    attn_implementation=training_config.attn_implementation,
-                )
-
                 if config.lora:
                     tts = Qwen3TTSModel.from_pretrained(
                         training_config.model_path.format(
@@ -355,6 +348,14 @@ def finetune(model, train_dataset, test_dataset):
                     )
 
                     tts.model.add_adapter(output_dir)
+                else:
+                    tts = Qwen3TTSModel.from_pretrained(
+                        model_ckpt_config.output_path.format(
+                            epoch=f"{epoch:03d}", global_step=global_step
+                        ),
+                        device_map="auto",
+                        attn_implementation=training_config.attn_implementation,
+                    )
 
                 idx = 0
                 eval_log = {}
