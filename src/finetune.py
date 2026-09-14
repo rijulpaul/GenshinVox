@@ -291,7 +291,11 @@ def finetune(model, train_dataset, test_dataset):
                 }
 
                 if config.lora:
-                    state_dict = build_state_dict(state_dict)
+                    # save adapters
+                    unwrapped_model.save_pretrained(output_dir)
+                    unwrapped_model = unwrapped_model.base_model.model
+                    if hasattr(unwrapped_model , "peft_config"):
+                        del unwrapped_model.peft_config
 
                 drop_prefix = "speaker_encoder"
                 keys_to_drop = [
