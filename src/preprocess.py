@@ -2,8 +2,6 @@ import re
 import librosa
 import numpy as np
 
-from functools import Placeholder, partial
-
 from src.config import get_config
 
 
@@ -22,8 +20,9 @@ def preprocess(dataset):
     dataset = dataset.filter(filter)
 
 
-    process_text = partial(
-        __process_text, Placeholder, dataset_config.transcript_column
+    process_text = lambda text: __process_text(
+        text,
+        dataset_config.transcript_column
     )
     dataset = dataset.map(process_text)
 
@@ -32,8 +31,10 @@ def preprocess(dataset):
         lambda x: bool(re.search(r"[a-zA-Z]", x[dataset_config.transcript_column]))
     )
 
-    process_audio = partial(
-        __process_audio, Placeholder, process_config, dataset_config.audio_column
+    process_audio = lambda audio: __process_audio(
+        audio,
+        process_config,
+        dataset_config.audio_column
     )
     dataset = dataset.map(process_audio)
 

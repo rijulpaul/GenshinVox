@@ -11,10 +11,12 @@ def load_tokenizer():
     if config.tokenizer_path:
         tokenizer = Qwen3TTSTokenizer.from_pretrained(
             config.tokenizer_path,
+            device_map="auto",
         )
     else:
         tokenizer = Qwen3TTSTokenizer.from_pretrained(
             config.tokenizer,
+            device_map="auto",
         )
     print("Tokenizer Loaded")
     return tokenizer

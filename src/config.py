@@ -15,8 +15,8 @@ class DatasetConfig(BaseModel):
     local_path: str | None = None   # Loads all the parquets in the specified directory (!!!wont read sub-directories)
     audio_column: str = "audio"
     transcript_column: str = "transcript"
-    speaker_column: str | None  # Specify if you want to filter based on a speaker/column
-    speaker_name: str | None    # To keep rows with the specified speaker/value. Leave empty to use the entire dataset
+    speaker_column: str | None = None  # Specify if you want to filter based on a speaker/column
+    speaker_name: str | None = None    # To keep rows with the specified speaker/value. Leave empty to use the entire dataset
     is_processed: bool = False  # if True, skips preprocessing
 
 
