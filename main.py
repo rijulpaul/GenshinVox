@@ -25,7 +25,6 @@ if __name__ == "__main__":
 
     train_dataset, test_dataset = load_dataset()
     if not config.dataset.is_processed:
-        train_dataset = preprocess(train_dataset)
         test_dataset = preprocess(test_dataset)
 
     model = load_model()

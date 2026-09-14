@@ -3,7 +3,7 @@ name = "genshinvox"
 version = "0.1.0"
 description = "Add your description here"
 readme = "README.md"
-requires-python = ">=3.14"
+requires-python = ">=3.12"
 dependencies = [
     "argparse>=1.4.0",
     "datasets>=5.0.1",
@@ -12,6 +12,7 @@ dependencies = [
     "huggingface-hub>=0.36.2",
     "jiwer>=4.0.0",
     "librosa>=1.0.0",
+    "numpy>=2.5.2",
     "openai-whisper>=20250625",
     "peft>=0.20.0",
     "pyannote-audio>=4.0.7",
@@ -19,15 +20,14 @@ dependencies = [
     "pyyaml>=6.0.3",
     "qwen-tts",
     "soundfile>=0.14.0",
-    "torch>=2.13.0",
+    "torch>=2.8.0",
     "torchaudio>=2.11.0",
-    "torchcodec>=0.16.0",
     "wandb>=0.29.0",
 ]
 
 [[tool.uv.index]]
 name = "pytorch-cuda"
-url = "https://download.pytorch.org/whl/cu130"
+url = "https://download.pytorch.org/whl/cu128"
 explicit = true
 
 [tool.uv.sources]
