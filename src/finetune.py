@@ -340,12 +340,21 @@ def finetune(model, train_dataset, test_dataset):
                 )
 
                 if config.lora:
+                    tts = Qwen3TTSModel.from_pretrained(
+                        training_config.model_path.format(
+                            epoch=f"{epoch:03d}", global_step=global_step
+                        ),
+                        device_map="auto",
+                        attn_implementation=training_config.attn_implementation,
+                    )
+
                     output_dir = os.path.join(
                         model_ckpt_config.output_path.format(
                             epoch=f"{epoch:03d}", global_step=global_step
                         )
                     )
-                    model.model.add_adapter(output_dir)
+
+                    tts.model.add_adapter(output_dir)
 
                 idx = 0
                 eval_log = {}
