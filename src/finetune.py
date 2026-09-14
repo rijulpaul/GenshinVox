@@ -53,7 +53,7 @@ def _upload_checkpoint_to_hf(config, output_dir, epoch, global_step):
         revision=config.revision,
         commit_message=commit_message,
         path_in_repo=path_in_repo,
-        token=config.token,
+        token=token,
     )
 
 
