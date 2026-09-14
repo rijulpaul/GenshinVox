@@ -21,6 +21,7 @@ dependencies = [
     "qwen-tts",
     "soundfile>=0.14.0",
     "torch>=2.8.0",
+    "torchcodec",
     "torchaudio>=2.11.0",
     "wandb>=0.29.0",
 ]
