@@ -359,18 +359,27 @@ def finetune(model, train_dataset, test_dataset):
                     base_audios.append(base_audio)
                     generated_audios.append(generated_audio)
 
-                for base_audio, generated_audio in zip(base_audios,generated_audios):
-                    if config.testing.word_error_rate:
+                if config.testing.word_error_rate:
+                    for base_audio, generated_audio in zip(base_audios,generated_audios):
                         wer = calculate_word_error_rate(base_audio, generated_audio)
                         eval_log["eval/word_error_rate"] += (wer/len(test_dataset))
 
-                for base_audio, generated_audio in zip(base_audios,generated_audios):
-                    if config.testing.speaker_similarity:
+                if config.testing.speaker_similarity:
+                    for base_audio, generated_audio in zip(base_audios,generated_audios):
                         ss = calculate_speaker_similarity(base_audio, generated_audio)
                         eval_log["eval/speaker_similarity"] += (ss/len(test_dataset))
 
-                    if config.testing.save_samples:
-                        sf.write(os.path.join(config.testing.output_path.format(epoch=f"{epoch:03d}",global_step=global_step),f"{idx:03d}.wav"),wavs[0],sr)
+                if config.testing.save_samples:
+                    for idx, audio in enumerate(generated_audios):
+                        sf.write(
+                            os.path.join(
+                                config.testing.output_path.format(
+                                    epoch=f"{epoch:03d}",
+                                    global_step=global_step),
+                                f"{idx:03d}.wav"),
+                            audio['array'],
+                            audio['sampling_rate']
+                        )
 
                 accelerator.log(
                     eval_log,
