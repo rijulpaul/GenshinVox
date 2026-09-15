@@ -270,7 +270,7 @@ def finetune(model, train_dataset, test_dataset):
                     unwrapped_model.save_pretrained(output_dir)
                     unwrapped_model = Qwen3TTSModel.from_pretrained(
                         training_config.model_path,
-                        device="auto"
+                        device_map="auto"
                     ).model
 
                 shutil.copytree(
@@ -317,23 +317,6 @@ def finetune(model, train_dataset, test_dataset):
                 )
                 save_path = os.path.join(output_dir, "model.safetensors")
                 save_file(state_dict, save_path)
-
-            # --- upload checkpoints to Hugging Face Hub ---
-            for ckpt_config in [model_ckpt_config, train_ckpt_config]:
-                try:
-                    output_dir = os.path.join(
-                        ckpt_config.output_path.format(
-                            epoch=f"{epoch:03d}", global_step=global_step
-                        )
-                    )
-                    _upload_checkpoint_to_hf(
-                        ckpt_config, output_dir, epoch, global_step
-                    )
-                except Exception as exc:
-                    accelerator.print(
-                        "Warning: failed to upload checkpoint to Hugging Face Hub: "
-                        f"{exc}"
-                    )
 
             if config.testing and test_dataset:
                 # Load the model checkpoint and test
@@ -382,5 +365,23 @@ def finetune(model, train_dataset, test_dataset):
                     eval_log,
                     step=global_step
                 )
+
+            # --- upload checkpoints to Hugging Face Hub ---
+            for ckpt_config in [model_ckpt_config, train_ckpt_config]:
+                try:
+                    output_dir = os.path.join(
+                        ckpt_config.output_path.format(
+                            epoch=f"{epoch:03d}", global_step=global_step
+                        )
+                    )
+                    _upload_checkpoint_to_hf(
+                        ckpt_config, output_dir, epoch, global_step
+                    )
+                except Exception as exc:
+                    accelerator.print(
+                        "Warning: failed to upload checkpoint to Hugging Face Hub: "
+                        f"{exc}"
+                    )
+
 
     accelerator.end_training()
