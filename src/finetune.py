@@ -340,6 +340,10 @@ def finetune(model, train_dataset, test_dataset):
                     )
                 idx = 0
                 eval_log = {}
+                base_audios = []
+                generated_audios = []
+
+                # Prevent OOM by performing all tasks per model then moving on.
                 for example in test_dataset:
                     # use each test dataset transcript to generate audio.
                     wavs, sr = tts.generate_custom_voice(
@@ -352,11 +356,15 @@ def finetune(model, train_dataset, test_dataset):
                         "array": wavs[0].astype(np.float32),
                         "sampling_rate": sr,
                     }
+                    base_audios.append(base_audio)
+                    generated_audios.append(generated_audio)
 
+                for base_audio, generated_audio in zip(base_audios,generated_audios):
                     if config.testing.word_error_rate:
                         wer = calculate_word_error_rate(base_audio, generated_audio)
                         eval_log["eval/word_error_rate"] += (wer/len(test_dataset))
 
+                for base_audio, generated_audio in zip(base_audios,generated_audios):
                     if config.testing.speaker_similarity:
                         ss = calculate_speaker_similarity(base_audio, generated_audio)
                         eval_log["eval/speaker_similarity"] += (ss/len(test_dataset))
