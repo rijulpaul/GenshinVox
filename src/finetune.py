@@ -4,7 +4,7 @@ import soundfile as sf
 from peft import PeftModel
 
 from src.config import get_config
-from src.eval import calculate_speaker_similarity, calculate_word_error_rate
+import src.eval as eval
 from src.experiment_tracking import setup_tracker
 from src.peft import build_state_dict
 
@@ -361,14 +361,18 @@ def finetune(model, train_dataset, test_dataset):
                 del tts
 
                 if config.testing.word_error_rate:
+                    eval_log["eval/word_error_rate"] = 0
                     for base_audio, generated_audio in zip(base_audios,generated_audios):
-                        wer = calculate_word_error_rate(base_audio, generated_audio)
+                        wer = eval.calculate_word_error_rate(base_audio, generated_audio)
                         eval_log["eval/word_error_rate"] += (wer/len(test_dataset))
+                    eval.unload()
 
                 if config.testing.speaker_similarity:
+                    eval_log["eval/speaker_similarity"] = 0
                     for base_audio, generated_audio in zip(base_audios,generated_audios):
-                        ss = calculate_speaker_similarity(base_audio, generated_audio)
+                        ss = eval.calculate_speaker_similarity(base_audio, generated_audio)
                         eval_log["eval/speaker_similarity"] += (ss/len(test_dataset))
+                    eval.unload()
 
                 if config.testing.save_samples:
                     for idx, audio in enumerate(generated_audios):

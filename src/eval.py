@@ -1,8 +1,19 @@
 import torch
+import gc
 
 __asr_model = None
 __stt_model = None
 
+def unload():
+    global __asr_model
+    if __asr_model:
+        del __asr_model
+        __asr_model = None
+
+    global __stt_model
+    if __stt_model:
+        del __stt_model
+        __stt_model = None
 
 def calculate_word_error_rate(audio1, audio2):
     import whisper
@@ -37,11 +48,11 @@ def calculate_speaker_similarity(audio1, audio2):
     # Better Alternative: "pyannote/embedding", use_auth_token=os.env["HF_TOKEN"]
 
     from pyannote.audio import Inference
-    inference = Inference(__asr_model, window="whole")
-    inference.to(torch.device("cuda"))
+    __asr_model = Inference(__asr_model, window="whole")
+    __asr_model.to(torch.device("cuda"))
 
-    embedding1 = inference(__to_waveform(audio1))
-    embedding2 = inference(__to_waveform(audio2))
+    embedding1 = __asr_model(__to_waveform(audio1))
+    embedding2 = __asr_model(__to_waveform(audio2))
     # `embeddingX` is (1 x D) numpy array extracted from the file as a whole.
 
     from scipy.spatial.distance import cosine
