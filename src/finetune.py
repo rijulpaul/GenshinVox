@@ -303,7 +303,6 @@ def finetune(model, train_dataset, test_dataset):
                     for k, v in unwrapped_model.state_dict().items()
                 }
 
-
                 drop_prefix = "speaker_encoder"
                 keys_to_drop = [
                     k for k in state_dict.keys() if k.startswith(drop_prefix)
@@ -320,6 +319,7 @@ def finetune(model, train_dataset, test_dataset):
                 )
                 save_path = os.path.join(output_dir, "model.safetensors")
                 save_file(state_dict, save_path)
+                del unwrapped_model
 
             if config.testing and test_dataset:
                 # Load the model checkpoint and test
@@ -358,6 +358,7 @@ def finetune(model, train_dataset, test_dataset):
                     }
                     base_audios.append(base_audio)
                     generated_audios.append(generated_audio)
+                del tts
 
                 if config.testing.word_error_rate:
                     for base_audio, generated_audio in zip(base_audios,generated_audios):

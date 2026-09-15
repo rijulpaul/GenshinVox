@@ -35,6 +35,8 @@ if __name__ == "__main__":
     train_dataset, ref_mel = extract_feature(
         dataset=train_dataset, tokenizer=tokenizer, processor=model.processor
     )
+    del tokenizer
+
     train_dataset = TTSDataset(train_dataset, model.processor, ref_mel, model_config)
 
     if config.lora:
