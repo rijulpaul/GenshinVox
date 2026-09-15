@@ -267,7 +267,10 @@ def finetune(model, train_dataset, test_dataset):
 
                 if config.lora:
                     # save adapters
-                    unwrapped_model.save_pretrained(output_dir)
+                    unwrapped_model.save_pretrained(
+                        os.path.join(output_dir,"adapter")
+                    )
+
                     unwrapped_model = Qwen3TTSModel.from_pretrained(
                         training_config.model_path,
                         device_map="auto"
@@ -285,9 +288,9 @@ def finetune(model, train_dataset, test_dataset):
                     config_dict = json.load(f)
                     config_dict["tts_model_type"] = "custom_voice"
                     talker_config = config_dict.get("talker_config", {})
-                    talker_config["spk_id"] = {training_config.speaker_name: 3000}
+                    talker_config["spk_id"] = {training_config.speaker_name.lower(): 3000}
                     talker_config["spk_is_dialect"] = {
-                        training_config.speaker_name: False
+                        training_config.speaker_name.lower(): False
                     }
                     config_dict["talker_config"] = talker_config
 
@@ -333,7 +336,7 @@ def finetune(model, train_dataset, test_dataset):
                 if config.lora:
                     tts.model = PeftModel.from_pretrained(
                         tts.model,
-                        output_dir
+                        os.path.join(output_dir,"adapter")
                     )
                 idx = 0
                 eval_log = {}
