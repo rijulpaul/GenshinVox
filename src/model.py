@@ -29,7 +29,6 @@ def load_model():
     try:
         model = Qwen3TTSModel.from_pretrained(
             config.model_path,
-            device_map="auto",
             attn_implementation=config.attn_implementation
         )
         print(f"Loaded model at {config.model_path}")
