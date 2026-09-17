@@ -32,7 +32,7 @@ def tracker_config(training_config, lora_config=None):
     return tracker
 
 
-def setup_tracker(accelerator):
+def setup_tracker(accelerator,**setup_kwargs):
     """Initialize a wandb tracker through accelerate (no-op if disabled)."""
     config = get_config()
     wandb_config = config.wandb
@@ -44,6 +44,10 @@ def setup_tracker(accelerator):
         init_kwargs["wandb"]["name"] = wandb_config.run_name
     if wandb_config.mode:
         init_kwargs["wandb"]["mode"] = wandb_config.mode
+
+    for k,v in setup_kwargs.items():
+        init_kwargs["wandb"][k] = v
+
     accelerator.init_trackers(
         wandb_config.project,
         config=tracker_config(config.training, config.lora),

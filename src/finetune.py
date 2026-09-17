@@ -88,29 +88,41 @@ def finetune(model, train_dataset, test_dataset):
         log_with="wandb",
     )
 
-    if training_config.enable_experiment_tracking:
-        setup_tracker(accelerator)
-
-    model, optimizer, dataloader = accelerator.prepare(
-        model.model, optimizer, dataloader
-    )
-
-    # Resume training from a checkpoint
-    if training_config.resume_training_path:
-        accelerator.load_state(training_config.resume_training_path)
-
-    model.train()
-
-    target_speaker_embedding = None
-
     # --- experiment tracking state ---
+    start_epoch = 0
     global_step = 0
     micro_steps = 0
     running_loss = 0.0
     running_talker_loss = 0.0
     running_sub_talker_loss = 0.0
 
-    for epoch in range(training_config.epochs):
+    # wandb setup kwargs used if resuming training
+    setup_kwargs = {}
+
+    # Resume training from a checkpoint
+    if training_config.resume_training_path:
+        path = training_config.resume_training_path
+        accelerator.load_state(path)
+        with open(os.path.join(path,'train_info.json'),'r') as file:
+            resume_info = json.load(file)
+            start_epoch = resume_info.epoch+1
+            global_step = resume_info.global_step
+            setup_kwargs['id'] = resume_info.run_id
+            setup_kwargs['resume'] = 'must'
+
+
+    if training_config.enable_experiment_tracking:
+        setup_tracker(accelerator, **setup_kwargs)
+
+    model, optimizer, dataloader = accelerator.prepare(
+        model.model, optimizer, dataloader
+    )
+
+    model.train()
+
+    target_speaker_embedding = None
+
+    for epoch in range(start_epoch,training_config.epochs):
         epoch_start = time.perf_counter()
         epoch_loss = epoch_talker_loss = epoch_sub_talker_loss = 0.0
         epoch_samples = 0
@@ -254,6 +266,15 @@ def finetune(model, train_dataset, test_dataset):
                     epoch=f"{epoch:03d}", global_step=global_step
                 )
                 accelerator.save_state(output_dir)
+                run = accelerator.get_tracker('wandb',unwrap=True)
+                run_id = run.id if run else None
+                data = {
+                    "epoch": epoch,
+                    "global step": global_step,
+                    "run_id": run_id
+                }
+                with open(os.path.join(output_dir,'train_info.json'),'w') as file:
+                    json.dump(data,file,indent=4)
 
             # Save model checkpoint Locally and setup for inference
             if epoch % model_ckpt_config.save_every_n_epochs == 0:
