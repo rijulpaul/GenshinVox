@@ -109,6 +109,7 @@ def finetune(model, train_dataset, test_dataset, accelerator):
     )
 
     model.train()
+    base_model = accelerator.unwrap_model(model)
 
     target_speaker_embedding = None
 
@@ -128,8 +129,8 @@ def finetune(model, train_dataset, test_dataset, accelerator):
                 codec_0_labels = batch["codec_0_labels"]
                 codec_mask = batch["codec_mask"]
 
-                speaker_embedding = model.module.speaker_encoder(
-                    ref_mels.to(accelerator.device).to(model.module.dtype)
+                speaker_embedding = base_model.speaker_encoder(
+                    ref_mels.to(accelerator.device).to(base_model.dtype)
                 ).detach()
                 if target_speaker_embedding is None:
                     target_speaker_embedding = speaker_embedding
@@ -138,14 +139,14 @@ def finetune(model, train_dataset, test_dataset, accelerator):
                 input_codec_ids = input_ids[:, :, 1]
 
                 input_text_embedding = (
-                    model.module.talker.text_projection(
-                        model.module.talker.model.text_embedding(input_text_ids)
+                    base_model.talker.text_projection(
+                        base_model.talker.model.text_embedding(input_text_ids)
                     )
                     * text_embedding_mask
                 )
 
                 input_codec_embedding = (
-                    model.module.talker.model.codec_embedding(input_codec_ids)
+                    base_model.talker.model.codec_embedding(input_codec_ids)
                     * codec_embedding_mask
                 )
 
@@ -155,14 +156,14 @@ def finetune(model, train_dataset, test_dataset, accelerator):
 
                 for i in range(1, 16):
                     codec_i_embedding = (
-                        model.module.talker.code_predictor.get_input_embeddings()[i - 1](
+                        base_model.talker.code_predictor.get_input_embeddings()[i - 1](
                             codec_ids[:, :, i]
                         )
                     )
                     codec_i_embedding = codec_i_embedding * codec_mask.unsqueeze(-1)
                     input_embeddings = input_embeddings + codec_i_embedding
 
-                outputs = model.module.talker(
+                outputs = base_model.talker(
                     inputs_embeds=input_embeddings,
                     attention_mask=attention_mask,
                     labels=codec_0_labels,
@@ -174,7 +175,7 @@ def finetune(model, train_dataset, test_dataset, accelerator):
                 talker_codec_ids = codec_ids[codec_mask]
 
                 _, sub_talker_loss = (
-                    model.module.talker.forward_sub_talker_finetune(
+                    base_model.talker.forward_sub_talker_finetune(
                         talker_codec_ids, talker_hidden_states
                     )
                 )
@@ -247,7 +248,6 @@ def finetune(model, train_dataset, test_dataset, accelerator):
                 step=global_step,
             )
 
-        accelerator.wait_for_everyone()
         if accelerator.is_main_process:
 
             # Save Training Checkpoint Locally
@@ -268,7 +268,6 @@ def finetune(model, train_dataset, test_dataset, accelerator):
 
             # Save model checkpoint Locally and setup for inference
             if epoch % model_ckpt_config.save_every_n_epochs == 0:
-                unwrapped_model = accelerator.unwrap_model(model)
 
                 output_dir = os.path.join(
                     model_ckpt_config.output_path.format(
@@ -278,13 +277,12 @@ def finetune(model, train_dataset, test_dataset, accelerator):
 
                 if config.lora:
                     # save adapters
-                    unwrapped_model.save_pretrained(
+                    base_model.save_pretrained(
                         os.path.join(output_dir,"adapter")
                     )
 
-                    unwrapped_model = Qwen3TTSModel.from_pretrained(
+                    base_model = Qwen3TTSModel.from_pretrained(
                         training_config.model_path,
-                        device_map="auto"
                     ).model
 
                 shutil.copytree(
@@ -311,7 +309,7 @@ def finetune(model, train_dataset, test_dataset, accelerator):
 
                 state_dict = {
                     k: v.detach().to("cpu")
-                    for k, v in unwrapped_model.state_dict().items()
+                    for k, v in base_model.state_dict().items()
                 }
 
                 drop_prefix = "speaker_encoder"
@@ -330,7 +328,7 @@ def finetune(model, train_dataset, test_dataset, accelerator):
                 )
                 save_path = os.path.join(output_dir, "model.safetensors")
                 save_file(state_dict, save_path)
-                del unwrapped_model
+                del base_model
 
             if config.testing and test_dataset:
                 # Load the model checkpoint and test
@@ -341,7 +339,6 @@ def finetune(model, train_dataset, test_dataset, accelerator):
                 )
                 tts = Qwen3TTSModel.from_pretrained(
                     output_dir,
-                    device_map="auto",
                     attn_implementation=training_config.attn_implementation,
                 )
                 if config.lora:
@@ -418,6 +415,7 @@ def finetune(model, train_dataset, test_dataset, accelerator):
                         "Warning: failed to upload checkpoint to Hugging Face Hub: "
                         f"{exc}"
                     )
+        accelerator.wait_for_everyone()
 
 
     accelerator.end_training()
