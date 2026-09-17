@@ -31,7 +31,14 @@ name = "pytorch-cuda"
 url = "https://download.pytorch.org/whl/cu128"
 explicit = true
 
+[[tool.uv.index]]
+name = "wheels"
+url = "https://wheels.astral.sh/simple/cu128/"
+explicit = true
+
 [tool.uv.sources]
+flash-attn = [{ index = "wheels" }]
+deepspeed = [{ index = "wheels" }]
 torch = [{ index = "pytorch-cuda" }]
 torchvision = [{ index = "pytorch-cuda" }]
 torchaudio = [{ index = "pytorch-cuda" }]
@@ -45,3 +52,4 @@ members = [
 
 [tool.uv.extra-build-dependencies]
 flash-attn = ["torch"]
+deepspeed = ["torch"]
