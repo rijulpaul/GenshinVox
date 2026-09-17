@@ -1,7 +1,10 @@
 import argparse
 import dotenv
+import torch
 
 from transformers import AutoConfig
+from accelerate import Accelerator
+from datasets import load_from_disk
 
 from src.config import load_config
 from src.finetune import finetune
@@ -23,19 +26,34 @@ if __name__ == "__main__":
 
     config = load_config(args.config)
 
-    train_dataset, test_dataset = load_dataset()
-    if not config.dataset.is_processed:
-        train_dataset = preprocess(train_dataset)
-
-    model = load_model()
-    tokenizer = load_tokenizer()
-
-    model_config = AutoConfig.from_pretrained(config.training.model)
-
-    train_dataset, ref_mel = extract_feature(
-        dataset=train_dataset, tokenizer=tokenizer, processor=model.processor
+    accelerator = Accelerator(
+        gradient_accumulation_steps=config.training.gradient_accumulation_steps,
+        mixed_precision="bf16",
+        log_with="wandb",
     )
-    del tokenizer
+
+    train_dataset, test_dataset = load_dataset()
+    model = load_model()
+
+    if accelerator.is_main_process:
+        if not config.dataset.is_processed:
+            train_dataset = preprocess(train_dataset)
+
+        tokenizer = load_tokenizer()
+
+        model_config = AutoConfig.from_pretrained(config.training.model)
+
+        train_dataset, ref_mel = extract_feature(
+            dataset=train_dataset, tokenizer=tokenizer, processor=model.processor
+        )
+        train_dataset.save_to_disk('data/train')
+        torch.save(ref_mel,'data/ref_mel')
+        del tokenizer
+
+    accelerator.wait_for_everyone()
+
+    train_dataset = load_from_disk('data/train')
+    ref_mel = torch.load('data/ref_mel', map_location="cpu")
 
     train_dataset = TTSDataset(train_dataset, model.processor, ref_mel, model_config)
 
@@ -43,4 +61,4 @@ if __name__ == "__main__":
         print("LoRa Finetuning Enabled")
         model.model = get_peft_model(model.model)
 
-    finetune(model, train_dataset, test_dataset)
+    finetune(model, train_dataset, test_dataset, accelerator)

@@ -9,7 +9,6 @@ from src.experiment_tracking import setup_tracker
 
 from qwen_tts.qwen_tts import Qwen3TTSModel
 
-from accelerate import Accelerator
 from safetensors.torch import save_file
 from torch.utils.data import DataLoader
 from torch.optim import AdamW
@@ -57,8 +56,7 @@ def _upload_checkpoint_to_hf(config, output_dir, epoch, global_step):
         ignore_patterns=["*.md"]
     )
 
-
-def finetune(model, train_dataset, test_dataset):
+def finetune(model, train_dataset, test_dataset, accelerator):
 
     config = get_config()
     training_config = config.training
@@ -79,12 +77,6 @@ def finetune(model, train_dataset, test_dataset):
         eps=training_config.eps,
         weight_decay=training_config.weight_decay,
         amsgrad=training_config.amsgrad,
-    )
-
-    accelerator = Accelerator(
-        gradient_accumulation_steps=training_config.gradient_accumulation_steps,
-        mixed_precision="bf16",
-        log_with="wandb",
     )
 
     # --- experiment tracking state ---
@@ -108,7 +100,6 @@ def finetune(model, train_dataset, test_dataset):
             global_step = resume_info.global_step
             setup_kwargs['id'] = resume_info.run_id
             setup_kwargs['resume'] = 'must'
-
 
     if training_config.enable_experiment_tracking:
         setup_tracker(accelerator, **setup_kwargs)
