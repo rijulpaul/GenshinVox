@@ -1025,7 +1025,7 @@ class Qwen3TTSTalkerCodePredictorModel(Qwen3TTSPreTrainedModel):
         )
         self.norm = Qwen3TTSRMSNorm(config.hidden_size, eps=config.rms_norm_eps)
         self.rotary_emb = Qwen3TTSRotaryEmbedding(config=config)
-        self.gradient_checkpointing = True
+        self.gradient_checkpointing = False
         self.has_sliding_layers = "sliding_attention" in self.config.layer_types
         self.codec_embedding = nn.ModuleList(
             [nn.Embedding(config.vocab_size, embedding_dim) for _ in range(config.num_code_groups - 1)]
@@ -1437,7 +1437,7 @@ class Qwen3TTSTalkerModel(Qwen3TTSTalkerTextPreTrainedModel):
         )
         self.norm = Qwen3TTSRMSNorm(config.hidden_size, eps=config.rms_norm_eps)
         self.rotary_emb = Qwen3TTSTalkerRotaryEmbedding(config)
-        self.gradient_checkpointing = True
+        self.gradient_checkpointing = False
         self.codec_embedding = nn.Embedding(config.vocab_size, config.hidden_size)
         self.text_embedding = nn.Embedding(config.text_vocab_size, config.text_hidden_size)
 
