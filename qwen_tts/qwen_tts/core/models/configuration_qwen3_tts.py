@@ -197,7 +197,7 @@ class Qwen3TTSTalkerCodePredictorConfig(PretrainedConfig):
         max_position_embeddings=32768,
         initializer_range=0.02,
         rms_norm_eps=0.000001,
-        use_cache=True,
+        use_cache=False,
         tie_word_embeddings=False,
         rope_theta=10000,
         rope_scaling=None,
@@ -380,7 +380,7 @@ class Qwen3TTSTalkerConfig(PretrainedConfig):
         max_position_embeddings=32768,
         initializer_range=0.02,
         rms_norm_eps=0.000001,
-        use_cache=True,
+        use_cache=False,
         tie_word_embeddings=False,
         rope_theta=10000,
         rope_scaling=None,
@@ -453,7 +453,7 @@ class Qwen3TTSTalkerConfig(PretrainedConfig):
 
 class Qwen3TTSConfig(PretrainedConfig):
     """
-    This is the configuration class to store the configuration of a [`Qwen3TTSForConditionalGeneration`]. 
+    This is the configuration class to store the configuration of a [`Qwen3TTSForConditionalGeneration`].
     """
 
     model_type = "qwen3_tts"
