@@ -33,7 +33,16 @@ if __name__ == "__main__":
     )
 
     train_dataset, test_dataset = load_dataset()
-    model = load_model()
+
+    # Make sure the model/cache exists before every process tries to load it
+    # Prevent ChildFailedError caused by multiple parallel model download
+    if accelerator.is_main_process:
+        model = load_model()
+
+    accelerator.wait_for_everyone()
+
+    if not accelerator.is_main_process:
+        model = load_model()
 
     if accelerator.is_main_process:
         if not config.dataset.is_processed:
@@ -59,7 +68,7 @@ if __name__ == "__main__":
     train_dataset = TTSDataset(train_dataset, model.processor, ref_mel, model_config)
 
     if config.lora:
-        print("LoRa Finetuning Enabled")
+        accelerator.print("LoRa Finetuning Enabled")
         model.model = get_peft_model(model.model)
 
     finetune(model, train_dataset, test_dataset, accelerator)
