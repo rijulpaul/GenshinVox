@@ -1,5 +1,4 @@
 import torch
-import gc
 
 __asr_model = None
 __stt_model = None

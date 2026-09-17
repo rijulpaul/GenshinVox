@@ -6,7 +6,6 @@ from peft import PeftModel
 from src.config import get_config
 import src.eval as eval
 from src.experiment_tracking import setup_tracker
-from src.peft import build_state_dict
 
 from qwen_tts.qwen_tts import Qwen3TTSModel
 
@@ -183,7 +182,7 @@ def finetune(model, train_dataset, test_dataset):
                 talker_hidden_states = hidden_states[codec_mask[:, 1:]]
                 talker_codec_ids = codec_ids[codec_mask]
 
-                sub_talker_logits, sub_talker_loss = (
+                _, sub_talker_loss = (
                     model.talker.forward_sub_talker_finetune(
                         talker_codec_ids, talker_hidden_states
                     )
