@@ -128,8 +128,8 @@ def finetune(model, train_dataset, test_dataset, accelerator):
                 codec_0_labels = batch["codec_0_labels"]
                 codec_mask = batch["codec_mask"]
 
-                speaker_embedding = model.speaker_encoder(
-                    ref_mels.to(model.device).to(model.dtype)
+                speaker_embedding = model.module.speaker_encoder(
+                    ref_mels.to(accelerator.device).to(model.module.dtype)
                 ).detach()
                 if target_speaker_embedding is None:
                     target_speaker_embedding = speaker_embedding
@@ -138,14 +138,14 @@ def finetune(model, train_dataset, test_dataset, accelerator):
                 input_codec_ids = input_ids[:, :, 1]
 
                 input_text_embedding = (
-                    model.talker.text_projection(
-                        model.talker.model.text_embedding(input_text_ids)
+                    model.module.talker.text_projection(
+                        model.module.talker.model.text_embedding(input_text_ids)
                     )
                     * text_embedding_mask
                 )
 
                 input_codec_embedding = (
-                    model.talker.model.codec_embedding(input_codec_ids)
+                    model.module.talker.model.codec_embedding(input_codec_ids)
                     * codec_embedding_mask
                 )
 
@@ -155,14 +155,14 @@ def finetune(model, train_dataset, test_dataset, accelerator):
 
                 for i in range(1, 16):
                     codec_i_embedding = (
-                        model.talker.code_predictor.get_input_embeddings()[i - 1](
+                        model.module.talker.code_predictor.get_input_embeddings()[i - 1](
                             codec_ids[:, :, i]
                         )
                     )
                     codec_i_embedding = codec_i_embedding * codec_mask.unsqueeze(-1)
                     input_embeddings = input_embeddings + codec_i_embedding
 
-                outputs = model.talker(
+                outputs = model.module.talker(
                     inputs_embeds=input_embeddings,
                     attention_mask=attention_mask,
                     labels=codec_0_labels,
@@ -174,7 +174,7 @@ def finetune(model, train_dataset, test_dataset, accelerator):
                 talker_codec_ids = codec_ids[codec_mask]
 
                 _, sub_talker_loss = (
-                    model.talker.forward_sub_talker_finetune(
+                    model.module.talker.forward_sub_talker_finetune(
                         talker_codec_ids, talker_hidden_states
                     )
                 )
