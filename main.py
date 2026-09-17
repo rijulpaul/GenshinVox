@@ -41,13 +41,13 @@ if __name__ == "__main__":
 
         tokenizer = load_tokenizer()
 
-        model_config = AutoConfig.from_pretrained(config.training.model)
-
         train_dataset, ref_mel = extract_feature(
             dataset=train_dataset, tokenizer=tokenizer, processor=model.processor
         )
+
         train_dataset.save_to_disk('data/train')
         torch.save(ref_mel,'data/ref_mel')
+
         del tokenizer
 
     accelerator.wait_for_everyone()
@@ -55,6 +55,7 @@ if __name__ == "__main__":
     train_dataset = load_from_disk('data/train')
     ref_mel = torch.load('data/ref_mel', map_location="cpu")
 
+    model_config = AutoConfig.from_pretrained(config.training.model)
     train_dataset = TTSDataset(train_dataset, model.processor, ref_mel, model_config)
 
     if config.lora:
