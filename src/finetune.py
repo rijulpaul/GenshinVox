@@ -415,13 +415,16 @@ def finetune(model, train_dataset, test_dataset, accelerator):
                         eval.unload()
 
                     if config.testing.save_samples:
+
+                        output_dir = config.testing.output_path.format(
+                            epoch=f"{epoch:03d}",
+                            global_step=global_step
+                        )
+                        os.makedirs(output_dir, exist_ok=True)
+
                         for idx, audio in enumerate(generated_audios):
                             sf.write(
-                                os.path.join(
-                                    config.testing.output_path.format(
-                                        epoch=f"{epoch:03d}",
-                                        global_step=global_step),
-                                    f"{idx:03d}.wav"),
+                                os.path.join(output_dir,f"{idx:03d}.wav"),
                                 audio['array'],
                                 audio['sampling_rate']
                             )
