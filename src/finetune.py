@@ -342,9 +342,6 @@ def finetune(model, train_dataset, test_dataset, accelerator):
                             for k, v in base_model.state_dict().items()
                         }
 
-                    for k,v in state_dict.items():
-                        print(k,v)
-
                     drop_prefix = "speaker_encoder"
                     keys_to_drop = [
                         k for k in state_dict.keys() if k.startswith(drop_prefix)
@@ -362,6 +359,93 @@ def finetune(model, train_dataset, test_dataset, accelerator):
                     save_path = os.path.join(output_dir, "model.safetensors")
                     save_file(state_dict, save_path)
                     info(f"Model checkpoint saved to {save_path}")
+
+                if config.testing and test_dataset:
+                    # Load the model checkpoint and test
+                    info(f"Running evaluation on {len(test_dataset)} test samples")
+                    output_dir = os.path.join(
+                        model_ckpt_config.output_path.format(
+                            epoch=f"{epoch:03d}", global_step=global_step
+                        )
+                    )
+                    tts = Qwen3TTSModel.from_pretrained(
+                        output_dir,
+                        device_map="cuda",
+                        attn_implementation=training_config.attn_implementation,
+                    )
+                    if config.lora:
+                        tts.model = PeftModel.from_pretrained(
+                            tts.model,
+                            os.path.join(output_dir,"adapter")
+                        )
+                    idx = 0
+                    eval_log = {}
+                    base_audios = []
+                    generated_audios = []
+
+                    # Prevent OOM by performing all tasks per model then moving on.
+                    for example in test_dataset:
+                        # use each test dataset transcript to generate audio.
+                        wavs, sr = tts.generate_custom_voice(
+                            text=example[config.dataset.transcript_column],
+                            speaker=training_config.speaker_name,
+                        )
+
+                        base_audio = example[config.dataset.audio_column]
+                        generated_audio = {
+                            "array": wavs[0].astype(np.float32),
+                            "sampling_rate": sr,
+                        }
+                        base_audios.append(base_audio)
+                        generated_audios.append(generated_audio)
+                    del tts
+
+                    if config.testing.word_error_rate:
+                        eval_log["eval/word_error_rate"] = 0
+                        for base_audio, generated_audio in zip(base_audios,generated_audios):
+                            wer = eval.calculate_word_error_rate(base_audio, generated_audio)
+                            eval_log["eval/word_error_rate"] += (wer/len(test_dataset))
+                        eval.unload()
+
+                    if config.testing.speaker_similarity:
+                        eval_log["eval/speaker_similarity"] = 0
+                        for base_audio, generated_audio in zip(base_audios,generated_audios):
+                            ss = eval.calculate_speaker_similarity(base_audio, generated_audio)
+                            eval_log["eval/speaker_similarity"] += (ss/len(test_dataset))
+                        eval.unload()
+
+                    if config.testing.save_samples:
+                        for idx, audio in enumerate(generated_audios):
+                            sf.write(
+                                os.path.join(
+                                    config.testing.output_path.format(
+                                        epoch=f"{epoch:03d}",
+                                        global_step=global_step),
+                                    f"{idx:03d}.wav"),
+                                audio['array'],
+                                audio['sampling_rate']
+                            )
+
+                    accelerator.log(
+                        eval_log,
+                        step=global_step
+                    )
+
+                # --- upload checkpoints to Hugging Face Hub ---
+                for ckpt_config in [model_ckpt_config, train_ckpt_config]:
+                    try:
+                        output_dir = os.path.join(
+                            ckpt_config.output_path.format(
+                                epoch=f"{epoch:03d}", global_step=global_step
+                            )
+                        )
+                        _upload_checkpoint_to_hf(
+                            ckpt_config, output_dir, epoch, global_step
+                        )
+                    except Exception as exc:
+                        warning(
+                            f"Failed to upload checkpoint to Hugging Face Hub: {exc}"
+                        )
 
         accelerator.wait_for_everyone()
 
