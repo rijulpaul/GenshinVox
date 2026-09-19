@@ -1,4 +1,4 @@
-import os, shutil, json, time
+import os, shutil, json, time, torch
 import numpy as np
 import soundfile as sf
 from peft import PeftModel
@@ -188,7 +188,7 @@ def finetune(model, train_dataset, test_dataset, accelerator):
                 if accelerator.sync_gradients:
                     grad_norm = accelerator.clip_grad_norm_(model.parameters(), 1.0)
                     if grad_norm is not None:
-                        grad_norm = grad_norm.item()
+                        grad_norm = grad_norm.item() if torch.is_tensor(grad_norm) else float(grad_norm)
 
                 optimizer.step()
                 optimizer.zero_grad()
