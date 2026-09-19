@@ -272,5 +272,9 @@ def finetune(model, train_dataset, test_dataset, accelerator):
             f"duration={time.perf_counter() - epoch_start:.1f}s"
         )
 
+        if accelerator.is_main_process:
+            print('main')
+        accelerator.wait_for_everyone()
+
     accelerator.end_training()
     info("Training complete; accelerator tracker ended")
