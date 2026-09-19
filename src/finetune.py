@@ -402,14 +402,14 @@ def finetune(model, train_dataset, test_dataset, accelerator):
 
                     if config.testing.word_error_rate:
                         eval_log["eval/word_error_rate"] = 0
-                        for base_audio, generated_audio in zip(base_audios,generated_audios):
+                        for base_audio, generated_audio in zip(base_audios, generated_audios):
                             wer = eval.calculate_word_error_rate(base_audio, generated_audio)
                             eval_log["eval/word_error_rate"] += (wer/len(test_dataset))
                         eval.unload()
 
                     if config.testing.speaker_similarity:
                         eval_log["eval/speaker_similarity"] = 0
-                        for base_audio, generated_audio in zip(base_audios,generated_audios):
+                        for base_audio, generated_audio in zip(base_audios, generated_audios):
                             ss = eval.calculate_speaker_similarity(base_audio, generated_audio)
                             eval_log["eval/speaker_similarity"] += (ss/len(test_dataset))
                         eval.unload()
