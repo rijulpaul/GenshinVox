@@ -272,5 +272,178 @@ def finetune(model, train_dataset, test_dataset, accelerator):
             f"duration={time.perf_counter() - epoch_start:.1f}s"
         )
 
+        if accelerator.is_main_process:
+
+            # Save Training Checkpoint Locally
+            if train_ckpt_config and epoch % train_ckpt_config.save_every_n_epochs == 0:
+                output_dir = train_ckpt_config.output_path.format(
+                    epoch=f"{epoch:03d}", global_step=global_step
+                )
+                accelerator.save_state(output_dir)
+                info(f"Training checkpoint (resumable) saved to {output_dir}")
+                run = accelerator.get_tracker('wandb',unwrap=True)
+                run_id = run.id if run else None
+                data = {
+                    "epoch": epoch,
+                    "global step": global_step,
+                    "run_id": run_id
+                }
+                with open(os.path.join(output_dir,'train_info.json'),'w') as file:
+                    json.dump(data,file,indent=4)
+
+            # Save model checkpoint Locally and setup for inference
+            if epoch % model_ckpt_config.save_every_n_epochs == 0:
+
+                output_dir = os.path.join(
+                    model_ckpt_config.output_path.format(
+                        epoch=f"{epoch:03d}", global_step=global_step
+                    )
+                )
+
+                if config.lora:
+                    # save adapters
+                    base_model.save_pretrained(
+                        os.path.join(output_dir,"adapter")
+                    )
+
+                    base_model = Qwen3TTSModel.from_pretrained(
+                        training_config.model_path,
+                    ).model
+
+                shutil.copytree(
+                    training_config.model_path, output_dir, dirs_exist_ok=True
+                )
+
+                input_config_file = os.path.join(
+                    training_config.model_path, "config.json"
+                )
+                output_config_file = os.path.join(output_dir, "config.json")
+                with open(input_config_file, "r", encoding="utf-8") as f:
+                    config_dict = json.load(f)
+                    config_dict["tts_model_type"] = "custom_voice"
+                    talker_config = config_dict.get("talker_config", {})
+                    talker_config["spk_id"] = {training_config.speaker_name.lower(): 3000}
+                    talker_config["spk_is_dialect"] = {
+                        training_config.speaker_name.lower(): False
+                    }
+                    config_dict["talker_config"] = talker_config
+
+                with open(output_config_file, "w", encoding="utf-8") as f:
+                    json.dump(config_dict, f, indent=2, ensure_ascii=False)
+
+
+                state_dict = {
+                    k: v.detach().to("cpu")
+                    for k, v in base_model.state_dict().items()
+                }
+
+                drop_prefix = "speaker_encoder"
+                keys_to_drop = [
+                    k for k in state_dict.keys() if k.startswith(drop_prefix)
+                ]
+                for k in keys_to_drop:
+                    del state_dict[k]
+
+                weight = state_dict["talker.model.codec_embedding.weight"]
+                state_dict["talker.model.codec_embedding.weight"][3000] = (
+                    target_speaker_embedding[0]
+                    .detach()
+                    .to(weight.device)
+                    .to(weight.dtype)
+                )
+                save_path = os.path.join(output_dir, "model.safetensors")
+                save_file(state_dict, save_path)
+                info(f"Model checkpoint saved to {save_path}")
+                del base_model
+
+            if config.testing and test_dataset:
+                # Load the model checkpoint and test
+                info(f"Running evaluation on {len(test_dataset)} test samples")
+                output_dir = os.path.join(
+                    model_ckpt_config.output_path.format(
+                        epoch=f"{epoch:03d}", global_step=global_step
+                    )
+                )
+                tts = Qwen3TTSModel.from_pretrained(
+                    output_dir,
+                    device_map="cuda",
+                    attn_implementation=training_config.attn_implementation,
+                )
+                if config.lora:
+                    tts.model = PeftModel.from_pretrained(
+                        tts.model,
+                        os.path.join(output_dir,"adapter")
+                    )
+                idx = 0
+                eval_log = {}
+                base_audios = []
+                generated_audios = []
+
+                # Prevent OOM by performing all tasks per model then moving on.
+                for example in test_dataset:
+                    # use each test dataset transcript to generate audio.
+                    wavs, sr = tts.generate_custom_voice(
+                        text=example[config.dataset.transcript_column],
+                        speaker=training_config.speaker_name,
+                    )
+
+                    base_audio = example[config.dataset.audio_column]
+                    generated_audio = {
+                        "array": wavs[0].astype(np.float32),
+                        "sampling_rate": sr,
+                    }
+                    base_audios.append(base_audio)
+                    generated_audios.append(generated_audio)
+                del tts
+
+                if config.testing.word_error_rate:
+                    eval_log["eval/word_error_rate"] = 0
+                    for base_audio, generated_audio in zip(base_audios,generated_audios):
+                        wer = eval.calculate_word_error_rate(base_audio, generated_audio)
+                        eval_log["eval/word_error_rate"] += (wer/len(test_dataset))
+                    eval.unload()
+
+                if config.testing.speaker_similarity:
+                    eval_log["eval/speaker_similarity"] = 0
+                    for base_audio, generated_audio in zip(base_audios,generated_audios):
+                        ss = eval.calculate_speaker_similarity(base_audio, generated_audio)
+                        eval_log["eval/speaker_similarity"] += (ss/len(test_dataset))
+                    eval.unload()
+
+                if config.testing.save_samples:
+                    for idx, audio in enumerate(generated_audios):
+                        sf.write(
+                            os.path.join(
+                                config.testing.output_path.format(
+                                    epoch=f"{epoch:03d}",
+                                    global_step=global_step),
+                                f"{idx:03d}.wav"),
+                            audio['array'],
+                            audio['sampling_rate']
+                        )
+
+                accelerator.log(
+                    eval_log,
+                    step=global_step
+                )
+
+            # --- upload checkpoints to Hugging Face Hub ---
+            for ckpt_config in [model_ckpt_config, train_ckpt_config]:
+                try:
+                    output_dir = os.path.join(
+                        ckpt_config.output_path.format(
+                            epoch=f"{epoch:03d}", global_step=global_step
+                        )
+                    )
+                    _upload_checkpoint_to_hf(
+                        ckpt_config, output_dir, epoch, global_step
+                    )
+                except Exception as exc:
+                    warning(
+                        f"Failed to upload checkpoint to Hugging Face Hub: {exc}"
+                    )
+        accelerator.wait_for_everyone()
+
+
     accelerator.end_training()
     info("Training complete; accelerator tracker ended")
