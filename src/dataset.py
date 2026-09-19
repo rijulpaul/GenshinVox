@@ -136,6 +136,7 @@ class TTSDataset(Dataset):
 
 from datasets import load_dataset as ld, Audio
 from src.config import get_config
+from src.log import info
 
 
 def load_dataset():
@@ -145,11 +146,14 @@ def load_dataset():
     test_dataset can be None
     """
     config = get_config().dataset
+    info(f"Loading dataset: {config.dataset} (subset={config.subset})")
     dataset = ld(config.dataset, config.subset)
+    info(f"Dataset downloaded: {len(dataset[config.train_split])} rows in '{config.train_split}' split")
 
     if config.test_split:
         test_dataset = dataset[config.test_split]
         train_dataset = dataset[config.train_split]
+        info(f"Using existing split: train={len(train_dataset)}, test={len(test_dataset)}")
     else:
         if config.test_size > 0:
             dataset = dataset[config.train_split].train_test_split(
@@ -158,10 +162,13 @@ def load_dataset():
             )
             train_dataset = dataset["train"]
             test_dataset = dataset["test"]
+            info(f"Split '{config.train_split}' -> train={len(train_dataset)}, test={len(test_dataset)}")
         else:
             train_dataset = dataset[config.train_split]
             test_dataset = None
+            info(f"Using entire '{config.train_split}' split as training data ({len(train_dataset)} rows)")
 
+    info(f"Casting audio column '{config.audio_column}' to decodable Audio...")
     train_dataset = train_dataset.cast_column(
         config.audio_column,
         Audio(decode=True)
@@ -173,4 +180,5 @@ def load_dataset():
             Audio(decode=True)
         )
 
+    info("Dataset ready (audio column cast to Audio)")
     return train_dataset, test_dataset

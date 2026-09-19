@@ -1,5 +1,7 @@
-from src.config import get_config
 """Experiment tracking helpers (wandb integrated via accelerate)."""
+
+from src.config import get_config
+from src.log import info
 
 
 def tracker_config(training_config, lora_config=None):
@@ -48,8 +50,10 @@ def setup_tracker(accelerator,**setup_kwargs):
     for k,v in setup_kwargs.items():
         init_kwargs["wandb"][k] = v
 
+    info(f"Initializing experiment tracker '{wandb_config.project}' (mode={wandb_config.mode})")
     accelerator.init_trackers(
         wandb_config.project,
         config=tracker_config(config.training, config.lora),
         init_kwargs=init_kwargs,
     )
+    info("Experiment tracker initialized")

@@ -4,6 +4,7 @@ from typing import List
 from tqdm import tqdm
 
 from src.config import get_config
+from src.log import info, error
 
 from qwen_tts.qwen_tts.core.models.modeling_qwen3_tts import mel_spectrogram
 
@@ -25,6 +26,8 @@ def extract_feature(dataset, processor, tokenizer):
     ref_min_duration = processing_config.ref_audio_min_duration
     ref_max_duration = processing_config.ref_audio_max_duration
 
+    info(f"Selecting reference audio (strategy={select_ref_strategy}, "
+         f"duration {ref_min_duration}s-{ref_max_duration}s)...")
     ref_idx = None
     ref_duration = 0.0
 
@@ -32,6 +35,7 @@ def extract_feature(dataset, processor, tokenizer):
         ref_idx = random.randint(0, search_size - 1)
         audio = dataset[ref_idx][audio_column]
         ref_duration = len(audio["array"]) / audio["sampling_rate"]
+        info(f"Random reference selected: index {ref_idx} ({ref_duration:.2f}s)")
     else:
         for i in tqdm(
             range(search_size),
@@ -52,19 +56,24 @@ def extract_feature(dataset, processor, tokenizer):
                     break
 
         if ref_idx is None:
+            error("No reference audio found within the configured duration range")
             raise RuntimeError("Could not find suitable reference audio.")
+        info(f"Reference audio selected: index {ref_idx} ({ref_duration:.2f}s)")
 
     ref_audio = dataset[ref_idx][audio_column]
 
-    print(
-        f"Using index {ref_idx} as reference\n Duration: {ref_duration:.2f}s\n Selection Strategy: {select_ref_strategy}"
+    info(
+        f"Using reference audio: index {ref_idx}, duration {ref_duration:.2f}s, "
+        f"strategy {select_ref_strategy}"
     )
 
+    info(f"Removing reference sample (index {ref_idx}) from dataset...")
     dataset = dataset.filter(
         lambda _, idx: idx != ref_idx,
         with_indices=True,
         desc="Removing reference sample",
     )
+    info(f"Reference sample removed: {len(dataset)} rows remain")
 
     def _process_batch(example):
 
@@ -78,13 +87,17 @@ def extract_feature(dataset, processor, tokenizer):
 
         return {"audio_codes": audio_code, "text_ids": text_id}
 
+    info("Tokenizing transcripts and extracting audio codes...")
     encoded = dataset.map(
         _process_batch,
         remove_columns=[audio_column, transcript_column],
         desc="Extracting audio codes",
     )
+    info(f"Audio codes extracted for {len(encoded)} samples")
 
+    info("Extracting reference mel-spectrogram...")
     ref_mel = extract_mels(audio=ref_audio["array"], sr=ref_audio["sampling_rate"])
+    info(f"Reference mel extracted: shape={tuple(ref_mel.shape)}")
 
     return encoded, ref_mel
 

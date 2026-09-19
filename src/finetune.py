@@ -6,6 +6,7 @@ from peft import PeftModel
 from src.config import get_config
 import src.eval as eval
 from src.experiment_tracking import setup_tracker
+from src.log import info, warning
 
 from qwen_tts.qwen_tts import Qwen3TTSModel
 
@@ -63,12 +64,20 @@ def finetune(model, train_dataset, test_dataset, accelerator):
     model_ckpt_config = training_config.model_checkpoint
     train_ckpt_config = training_config.training_checkpoint
 
+    info(
+        f"Initializing fine-tuning: model={training_config.model}, "
+        f"lr={training_config.lr}, epochs={training_config.epochs}, "
+        f"batch_size={training_config.batch_size}, "
+        f"grad_accum={training_config.gradient_accumulation_steps}"
+    )
+
     dataloader = DataLoader(
         train_dataset,
         batch_size=training_config.batch_size,
         shuffle=True,
         collate_fn=train_dataset.collate_fn,
     )
+    info(f"Train dataloader ready: {len(dataloader)} batches")
 
     optimizer = AdamW(
         model.model.parameters(),
@@ -100,6 +109,10 @@ def finetune(model, train_dataset, test_dataset, accelerator):
             global_step = resume_info.global_step
             setup_kwargs['id'] = resume_info.run_id
             setup_kwargs['resume'] = 'must'
+            info(
+                f"Resuming training from {path}: "
+                f"resuming at epoch {start_epoch}, global step {global_step}"
+            )
 
     if training_config.enable_experiment_tracking:
         setup_tracker(accelerator, **setup_kwargs)
@@ -107,13 +120,16 @@ def finetune(model, train_dataset, test_dataset, accelerator):
     model, optimizer, dataloader = accelerator.prepare(
         model.model, optimizer, dataloader
     )
+    info(f"Model, optimizer, dataloader prepared ({len(dataloader)} accelerator batches)")
 
     model.train()
+    info("Model set to train mode")
     base_model = accelerator.unwrap_model(model)
 
     target_speaker_embedding = None
 
     for epoch in range(start_epoch,training_config.epochs):
+        info(f"===== Starting epoch {epoch} / {training_config.epochs - 1} =====")
         epoch_start = time.perf_counter()
         epoch_loss = epoch_talker_loss = epoch_sub_talker_loss = 0.0
         epoch_samples = 0
@@ -248,6 +264,14 @@ def finetune(model, train_dataset, test_dataset, accelerator):
                 step=global_step,
             )
 
+        epoch_avg = (
+            epoch_loss / len(dataloader) if len(dataloader) > 0 else 0.0
+        )
+        info(
+            f"Epoch {epoch} complete | avg loss={epoch_avg:.4f} | "
+            f"duration={time.perf_counter() - epoch_start:.1f}s"
+        )
+
         if accelerator.is_main_process:
 
             # Save Training Checkpoint Locally
@@ -256,6 +280,7 @@ def finetune(model, train_dataset, test_dataset, accelerator):
                     epoch=f"{epoch:03d}", global_step=global_step
                 )
                 accelerator.save_state(output_dir)
+                info(f"Training checkpoint (resumable) saved to {output_dir}")
                 run = accelerator.get_tracker('wandb',unwrap=True)
                 run_id = run.id if run else None
                 data = {
@@ -328,10 +353,12 @@ def finetune(model, train_dataset, test_dataset, accelerator):
                 )
                 save_path = os.path.join(output_dir, "model.safetensors")
                 save_file(state_dict, save_path)
+                info(f"Model checkpoint saved to {save_path}")
                 del base_model
 
             if config.testing and test_dataset:
                 # Load the model checkpoint and test
+                info(f"Running evaluation on {len(test_dataset)} test samples")
                 output_dir = os.path.join(
                     model_ckpt_config.output_path.format(
                         epoch=f"{epoch:03d}", global_step=global_step
@@ -412,11 +439,11 @@ def finetune(model, train_dataset, test_dataset, accelerator):
                         ckpt_config, output_dir, epoch, global_step
                     )
                 except Exception as exc:
-                    accelerator.print(
-                        "Warning: failed to upload checkpoint to Hugging Face Hub: "
-                        f"{exc}"
+                    warning(
+                        f"Failed to upload checkpoint to Hugging Face Hub: {exc}"
                     )
         accelerator.wait_for_everyone()
 
 
     accelerator.end_training()
+    info("Training complete; accelerator tracker ended")

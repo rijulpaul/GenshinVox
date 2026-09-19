@@ -2,6 +2,8 @@ from pydantic import BaseModel
 from peft import LoraConfig
 from typing import Literal
 
+from src.log import info
+
 SelectRefStrategy = Literal["random", "good enough", "best"]
 WandbMode = Literal["online", "offline", "disabled"]
 
@@ -97,6 +99,7 @@ def load_config(config_file: str):
     global __base_config
     raw_config = _read_config_file(config_file)
     __base_config = BaseConfig(**raw_config)
+    info(f"Config validated and loaded from {config_file}")
     return __base_config
 
 
