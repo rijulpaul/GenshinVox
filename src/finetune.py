@@ -272,6 +272,22 @@ def finetune(model, train_dataset, test_dataset, accelerator):
             f"duration={time.perf_counter() - epoch_start:.1f}s"
         )
 
+        if train_ckpt_config and epoch % train_ckpt_config.save_every_n_epochs == 0:
+            output_dir = train_ckpt_config.output_path.format(
+                epoch=f"{epoch:03d}", global_step=global_step
+            )
+            accelerator.save_state(output_dir)
+            info(f"Training checkpoint (resumable) saved to {output_dir}")
+            run = accelerator.get_tracker('wandb',unwrap=True)
+            run_id = run.id if run else None
+            data = {
+                "epoch": epoch,
+                "global step": global_step,
+                "run_id": run_id
+            }
+            with open(os.path.join(output_dir,'train_info.json'),'w') as file:
+                json.dump(data,file,indent=4)
+
         if accelerator.is_main_process:
             print('main')
         accelerator.wait_for_everyone()
