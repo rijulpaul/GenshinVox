@@ -65,10 +65,10 @@ class TrainingConfig(BaseModel):
     model_path: str = "./model"     # Required during model checkpoint setup
     tokenizer: str
     tokenizer_path: str = ""
-    attn_implementation: str = "flash-attn"
+    attn_implementation: str = "spda"
     speaker_name: str       # The speaker_name to set in the model
     gradient_accumulation_steps: int = 1
-    deepspeed_zero_stage: int | None = None
+    deepspeed_zero_stage: int | None = None     # None to disable, 1, 2, 3
     enable_experiment_tracking: bool = False    # Use WandB to track experiment
     model_checkpoint: CheckpointConfig          # Model Checkpoint save inference ready model with modified state dict and differ from a Training Checkpoint
     training_checkpoint: CheckpointConfig | None = None     # To enable training resumability

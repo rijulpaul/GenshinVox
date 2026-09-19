@@ -1,7 +1,7 @@
 [project]
-name = "genshinvox"
+name = "Qwen3 TTS Finetuner"
 version = "0.1.0"
-description = "Add your description here"
+description = "Config Driven Qwen3 TTS Finetuning (LoRA/Full) Pipeline"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [

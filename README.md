@@ -1,378 +1,165 @@
 # GenshinVox
 
-A general-purpose fine-tuning pipeline for the
-[Qwen3-TTS-12Hz](https://huggingface.co/Qwen/Qwen3-TTS-12Hz-0.6B-Base) -Base
-models (`0.6B` or `1.7B`), built on top of the official Qwen3-TTS SFT script
-with a set of correctness and usability fixes (see
-[Changes to the official pipeline](#changes-to-the-official-sft-pipeline)).
+Fine-tuning pipeline for the Qwen3-TTS-12Hz-Base models ([0.6B](https://huggingface.co/Qwen/Qwen3-TTS-12Hz-0.6B-Base) or [1.7B](https://huggingface.co/Qwen/Qwen3-TTS-12Hz-0.6B-Base)).
 
-The project is config-driven and model + data agnostic (see
-[Configuration](#configuration)):
-
-- **Model** — pick any Qwen3-TTS-12Hz `-Base` checkpoint by id or local path
-  (`0.6B` / `1.7B`; the pipeline adapts text-projector handling per model size).
-- **Data** — point it at any dataset the Hugging Face `datasets` library can
-  load with an `Audio()` column — a Hub dataset, local Parquet, CSV/JSON, or a
-  folder of audio files — and it will train, and optionally evaluate (WER + speaker
-  similarity), push checkpoints to the Hub.
-
-First built to clone Genshin Impact character voices, but the pipeline itself is
-**not tied to that dataset** — any speech + transcript corpus works.
-
----
-
-## Why this pipeline exists
-
-The two features the official SFT script lacks, and the main reasons this
-project exists:
-
-### 1. Any `datasets.Audio()`-compatible dataset instead of JSONL
-
-The official script consumes a hand-built JSONL (`train.jsonl`) where every line
-is `<audio path>, <text>, <ref_audio>`. That is awkward to build at scale and
-cannot describe the train/test split, per-sample speaker metadata, or column
-layout you actually have.
-
-This project reads data through the Hugging Face `datasets` library and casts
-the audio column with `datasets.Audio()`, so `config.dataset` can be **any**
-dataset that exposes an audio + text column — the same formats the Hugging Face
-ecosystem uses:
-
-- a Hugging Face dataset id (`"org/dataset"`) with named splits;
-- a **local directory of Parquet files** (the natural format for preprocessed
-  audio codings);
-- local `csv` / `json` / `arrow`, or a folder of audio files;
-- any single-file format `load_dataset` auto-detects.
-
-Everything is decoded to an in-memory waveform via `Audio(decode=True)` and then
-normalized (mono, 24 kHz resample, trim, transcript cleanup) in
-`src/preprocess.py` — so the training loop only ever sees one canonical waveform
-+ text representation.
-
-Train/test splits, speaker filtering, and the audio/transcript column names are
-decorated in `config/dataset`, not hard-coded.
-
-### 2. LoRA with clean adapter handling
-
-Full fine-tuning of a 1.7B generative model is expensive and the output is
-checked-in as a giant `model.safetensors`. LoRA trains a tiny set of low-rank
-adapters instead, giving you:
-
-- **much lower VRAM** training and **tiny checkpoints**;
-- the option to keep separate lightweight adapters per speaker/voice;
-- a `merge_and_unload` path (or this repo's own `merge_lora`) to fold them back
-  into a deployable model when you're ready to publish.
-
-A LoRA **inference scale of `1.0` over-steers and forces the output** — merge at
-`0.3`–`0.35` (see [hyperparameters](#recommended-hyperparameters)).
-
----
-
-## Features
-
-- **Model-size agnostic** — works with `0.6B` or `1.7B` `-Base` checkpoints.
-- **Full fine-tuning or LoRA** — set the top-level `lora` block to enable LoRA;
-  omit it for full fine-tuning. LoRA adapters are saved separately and can be
-  merged back when a hub model is published.
-- **`datasets.Audio()` datasets** — reads through `datasets` and casts the audio
-  column with `Audio()`, so a Hub dataset, local Parquet, CSV/JSON, or an audio
-  folder all work. Parquet (preprocessed audio codings) is just one example.
-- **Config as JSON or YAML** — `.json` / `.yaml` / `.yml` config files are all
-  supported and validated with Pydantic.
-- **Selectable reference audio** — `random`, `good enough`, or `best`.
-- **Experiment tracking** — Weights & Biases (wandb) via accelerator, with
-  training hyperparameters (and LoRA settings when used) logged automatically.
-- **Resumable training** — periodic training checkpoints via
-  `accelerator.save_state`.
-- **Automatic evaluation** — WER (Whisper large-v3) and speaker similarity
-  (pyannote wav2vec speaker model) computed on a held-out test set each epoch.
-- **Hub uploads** — trained model and/or training checkpoints pushed to the
-  Hugging Face Hub (requires `HF_TOKEN`).
+[Config-driven](#configuration) and model/data agnostic:
+- **Model** — any Qwen3-TTS-12Hz `-Base` checkpoint, by HF id or local path.
+- **Data** — any dataset the `datasets` library can load with an `Audio()` column (HF hub, local Parquet, CSV/JSON, audio folder).
+- **Full fine-tuning or [LoRA](#using-lora-adapter)**, with optional wandb tracking, distributed training via `accelerate` with `DeepSpeed ZeRO` integrated, WER/speaker-similarity eval, Hub uploads.
 
 ---
 
 ## Requirements
 
-### System dependencies
-
-- `ffmpeg` (shared build) — audio decoding
-- `sox` (Sound eXchange) — audio utilities
-- An NVIDIA GPU with sufficient VRAM for the chosen model & settings, and a
-  locally installed CUDA toolkit if you build flash-attn from source.
-
-### Python
-
-Python **3.12+** (declared in `pyproject.toml`). Install with `uv`:
-
-```bash
-uv sync
-```
-
-This installs both the root package and the vendored `qwen_tts` workspace
-member. For a plain `pip` install:
-
-```bash
-pip install -r generated/requirements.txt   # generated by `uv` if you export it
-```
-
-> This codebase is managed with `uv` (see `pyproject.toml`). PyTorch is pulled
-> from the `cu128` index, so GPU builds are the default.
-
-### Important version compatibility
-
-The layout must match the pinned set below — mismatches (especially in
-`transformers` / `accelerate`) break `attn_implementation` detection and
-`accelerator` state handling.
-
-| Package              | Version                     | Notes                                                         |
-|----------------------|-----------------------------|---------------------------------------------------------------|
-| Python               | `>=3.12`                    |                                                               |
-| `qwen-tts` (vendored)| `0.1.1`                     | **`transformers==4.57.3`**, **`accelerate==1.12.0`**           |
-| `transformers`       | `4.57.3`                    | Required by vendored `qwen_tts`                               |
-| `accelerate`         | `1.12.0`                    | Required by vendored `qwen_tts`; used for training            |
-| `peft`               | `>=0.20.0`                  | LoRA support (`LoraConfig`, `PeftModel`, `merge_and_unload`)  |
-| `torch`              | `>=2.8.0` (cu128)           | GPU wheel from pytorch-cuda index                             |
-| `torchaudio`         | `>=2.11.0` (cu128)          |                                                               |
-| `pydantic`           | `>=2.13.4`                  | Config validation                                             |
-| `huggingface-hub`    | `>=0.36.2`                  | `create_repo` / `upload_folder`, model download              |
-| `wandb`              | `>=0.29.0`                  | Experiment tracking                                           |
-| `librosa`, `soundfile`|                            | Audio preprocessing                                           |
-| `pyannote-audio`     | `>=4.0.7`                   | Speaker-similarity evaluation                                 |
-| `openai-whisper`     | `>=20250625`                | WER evaluation                                                |
-| `jiwer`              | `>=4.0.0`                   | WER metric                                                    |
-| `datasets`           | `>=5.0.1`                   | Dataset loading / mapping                                     |
-| `PyYAML`             | `>=6.0.3`                   | YAML-config support                                           |
-
-See the root `pyproject.toml` for the full, canonical dependency list.
-
-### FlashAttention
-
-**FlashAttention is supported and preferred for both training speed and memory,
-but it is not installed by the toolkit** — you must install it yourself,
-because it cannot be installed from wheels until `torch` is already present.
-
-```bash
-# after `uv sync` (or your torch install):
-pip install -U flash-attn --no-build-isolation
-```
-
-If your machine has less than 96GB of RAM and many cores, cap the build:
-
-```bash
-MAX_JOBS=4 pip install -U flash-attn --no-build-isolation
-```
-
-Then set `attn_implementation: "flash-attn"` in the `training` config section.
-If you do **not** install flash-attn, set `attn_implementation: "sdpa"` instead
-for a memory/efficiency trade-off — the model still trains correctly.
-
-> flash-attn only runs when the model is loaded in `torch.float16` /
-> `torch.bfloat16`. This project trains in `mixed_precision="bf16"`, which is
-> compatible.
-
-### Environment variables
-
-`.env` (loaded via `python-dotenv`) and the shell:
-
-- `HF_TOKEN` — **required** for any Hub download, model upload, and eval
-  embedding model that requires access.
-- `WANDB_API_KEY` — optional; needed only for online wandb tracking.
-- `WANDB_MODE=offline` alternatively avoids the API key entirely.
-
----
+- **python**: >=3.12
+- **ffmpeg**: >=4 and <=9
+- **cu128** compatible GPU 
 
 ## Setup
 
 ```bash
-# 1. Install Python 3.12+ and `uv`, then:
-uv sync
-
-# 2. Install flash-attention (optional but recommended) — see above.
-
-# 3. Create a .env with your tokens
-echo "HF_TOKEN=hf_..." >> .env
-echo "WANDB_API_KEY=..." >> .env
-
-# 4. Pick a config
+uv sync                                  # Python 3.12+
+uv add flash-attn                        # optional but recommended
+uv add deepspeed                         # For optimizer/gradients/model sharding (optional)
+echo "HF_TOKEN=hf_..." >> .env           # required for hub access/uploads and speaker similarity testing model download (pyannote/wespeaker-voxceleb-resnet34-LM).
+echo "WANDB_API_KEY=..." >> .env         # only for online wandb
 cp config/example.yaml config/your_run.yaml
-# edit config/your_run.yaml
+```
+
+See `pyproject.toml` for the full dependency list.
+
+### On Linux
+```bash
+uv add torchcodec   # Installs cu128 version
+
+# Optionally
+uv add flash-attn deepspeed # wheels index provided in pyproject.toml
+```
+
+### On Windows
+> [!NOTE] 
+> No cuda version of torchcodec is available on windows (cpu variant should be installed).  
+Same goes for deepspeed and flash-attn with pre-built wheels  
+
+> [!TIP]
+> Inorder to install flash-attn or deepspeed on windows remove wheels index for these (lines `40-41` in `pyproject.toml`)   
+```toml
+flash-attn = [{ index = "wheels" }]
+deepspeed = [{ index = "wheels" }]
 ```
 
 ---
 
 ## Configuration
 
-**Quick references:**
+Start from an example and edit:
+- [`config/example.yaml`](config/example.yaml) / [`config/example.json`](config/example.json)
+- Every field is a Pydantic model in [`src/config.py`](src/config.py) — the schema is the source of truth.
 
-- [`config/example.yaml`](config/example.yaml) — YAML example 
-- [`config/example.json`](config/example.json) — JSON equivalent
-- [`src/config.py`](src/config.py) — the Pydantic schema backing every field
-  below (each top-level block is a `BaseModel`, most fields have a doc-comment)
+Highlights:
 
-Copy and edit `config/example.yaml`; the top-level blocks map 1:1 to the Pydantic
-models in `src/config.py`. Everything below documents them field by field.
+- **`lora`** — include to enable LoRA, omit for full fine-tuning.
+- **`training`** — lr, epochs, batch_size, model/tokenizer, `attn_implementation`, `speaker_name`, `gradient_accumulation_steps`, checkpoint save/upload settings, `resume_training_path`, `deepspeed_zero_stage`.
+  - Default `lr` is **`2e-6`** — the official `2e-5` causes severe generation problems.
+- **`dataset`** — HF id or local path, `audio_column`/`transcript_column`, `speaker_column`/`speaker_name`, train/test split, `is_processed`.
+- **`testing`** — optional WER + speaker-similarity eval and sample saving each epoch.
+- **`wandb`** — `project`/`entity`/`run_name`/`mode`.
 
-### `lora` (optional)
-
-```yaml
-lora:
-  r: 16
-  lora_alpha: 32
-  lora_dropout: 0.1
-  target_modules:
-    - q_proj
-    - k_proj
-    - v_proj
-    - o_proj
-    - gate_proj
-    - up_proj
-    - down_proj
-```
-
-Include this block to enable LoRA; remove it for full fine-tuning.
-
-### `training`
-
-| Field | Description |
-|---|---|
-| `lr` | Learning rate. **Default `2e-6`** — see [fixes](#learning-rate). |
-| `betas`, `eps`, `weight_decay`, `amsgrad` | AdamW settings. |
-| `epochs`, `batch_size` | Training schedule. |
-| `model` / `model_path` | HF id of a `-Base` checkpoint (`0.6B` or `1.7B`; downloaded to `model_path` on first run) / local dir. |
-| `tokenizer` / `tokenizer_path` | Tokenizer id or local path. |
-| `attn_implementation` | `"flash-attn"` (recommended) or `"sdpa"`. |
-| `speaker_name` | The cloned speaker name written into the model config. |
-| `gradient_accumulation_steps` | Micro-batch accumulation. |
-| `enable_experiment_tracking` | Enable wandb. |
-| `model_checkpoint` | Inference-ready model save + optional Hub upload. |
-| `training_checkpoint` | Full training state save (resumability), optional. |
-| `resume_training_path` | Path to a training checkpoint to resume from. |
-
-Checkpoint sub-blocks support `{epoch}` and `{global_step}` placeholders in
-`output_path`, `path_in_repo`, and `commit_message`.
-
-### `wandb`
-
-`project`, `entity`, `run_name`, `mode` (`online` / `offline` / `disabled`).
-All training hyperparameters — plus `lora/*` keys when LoRA is enabled — are
-logged to `wandb.config`.
-
-### `testing` (optional)
-
-Enables per-epoch WER, speaker similarity, and sample `.wav` saving on the held
-out test set. Omit to skip testing.
-
-### `dataset`
-
-The `dataset` block names what to train on. `dataset` is a HF dataset id or a
-local location in any format `datasets.Audio()` can handle; `audio_column`,
-`transcript_column`, `speaker_column`, and `speaker_name` describe/filter the
-rows; `train_split` / `test_split` (or `test_size`) build the split;
-`is_processed` skips preprocessing on already-processed data.
-
-> See `DatasetConfig` in [`src/config.py`](src/config.py) for every field.
+Checkpoint `output_path`, `path_in_repo`, and `commit_message` support `{epoch}` and `{global_step}`.
 
 ---
 
 ## Running
 
 ```bash
-uv run python main.py --config config/your_run.yaml
+uv run accelerate launch main.py --config config/your_run.yaml
+uv run accelerate launch --num_processes <n> main.py --config config/your_run.yaml  # multi-GPU
 ```
-
-The pipeline:
-
-1. Loads the dataset (Hub / local Parquet / CSV / JSON / audio folder) and
-   applies preprocessing if `is_processed: false`.
-2. Loads/downloads the base model (any `-Base` size) and tokenizer.
-3. Extracts feature embeddings and picks a reference audio.
-4. Wraps the data in a `TTSDataset`; wraps in LoRA if configured.
-5. Trains; saves training and/or model checkpoints each epoch.
-6. (Optional) evaluates WER / speaker similarity and saves samples.
-7. (Optional) uploads checkpoints to the Hub.
 
 ---
 
 ## Outputs
 
-- **Model checkpoints** — an inference-ready dir (`config.json` marked
-  `custom_voice`, `model.safetensors`, plus a `adapter/` subdir for LoRA) usable
-  directly with `Qwen3TTSModel.from_pretrained(...)` for
-  `generate_custom_voice(speaker="<your speaker>")`.
-- **Training checkpoints** — resumable via `resume_training_path`.
+- **Model checkpoints** — inference-ready dir (`config.json`, `model.safetensors`, plus `adapter/` for LoRA). Load with `Qwen3TTSModel.from_pretrained(...)` → `generate_custom_voice(speaker="<speaker_name>")`.
+- **Training checkpoints** — resumable state via `accelerator.save_state`.
 - **Eval samples** — `*.wav` per test sample.
 
 ---
 
-## Changes to the official SFT pipeline
+## Why LoRA saves full model?
+- The model is passed a ref_audio whose embedding is added to the state_dict along with other changes essentialy converting it from `Base` to `CustomVoice`.
+- This makes it easier to use adapter without passing a ref_audio and ref_text. Also, the model is used to run evaluations post training.
 
-This repository is not a drop-in copy of the official
-[`qwen_tts/finetuning/sft_12hz.py`](src/../qwen_tts/finetuning/sft_12hz.py).
-It reimplements training in `src/finetune.py` with the following fixes and
-additions.
-
-### Bug fixes
-
-#### Double label-shift bug (fixed)
-The official script manually shifts inputs **and** labels:
-
+## Using LoRA adapter
+1. Load the model saved with it and attach adapter to it.
 ```python
-# official (BUGGY): embeds, attention_mask, AND labels all shifted
-outputs = model.talker(
-    inputs_embeds=input_embeddings[:, :-1, :],
-    attention_mask=attention_mask[:, :-1],
-    labels=codec_0_labels[:, 1:],   # HF cross-entropy already shifts internally
-    ...
+# from qwen_tts.qwen_tts import Qwen3TTSModel # if within this repo
+from qwen_tts import Qwen3TTSModel  # If using official qwen_tts library
+
+tts = Qwen3TTSModel.from_pretrained(
+    path_to_model,
+    attn_implementation="flash_attention_2", # sdpa, eager, etc.
+    devicie_map="cuda" # auto, cpu
 )
+
+from peft import PeftModel
+
+tts.model = PeftModel.from_pretrained(
+    tts.model,
+    path_to_adapter
+)
+
+wav, sr = tts.generate_custom_voice(
+    text = text,
+    speaker = speaker
+)
+
 ```
+2. Load a Base model, attach the adapter and pass a `ref_audio` representing the same voice actor.
+```python
+import torch
+import soundfile as sf
+from qwen_tts import Qwen3TTSModel
 
-Because HF's built-in loss shift applies on top of the already-shifted
-`codec_0_labels[:, 1:]`, the model sees a **double shift**. This project passes
-the full, unshifted `inputs_embeds`, `attention_mask`, and `codec_0_labels`, and
-lets the HF Longformer-family loss handling shift labels exactly once.
+model = Qwen3TTSModel.from_pretrained(
+    "Qwen/Qwen3-TTS-12Hz-0.6B-Base",
+    device_map="cuda:0",
+    dtype=torch.bfloat16,
+    attn_implementation="flash_attention_2",
+)
 
-#### Text-projection dimension mismatch (fixed)
-The official script feeds `model.talker.model.text_embedding(text_ids)` directly
-into the summed embedding. For the **0.6B** model the text embedding is 1024-dim
-while the codec embedding is 2048-dim — summing mismatched dims breaks training
-for that size. This project applies `model.talker.text_projection(...)` to
-project the raw text embedding to the codec dimension, keeping the text + codec
-sum dimension-consistent across model sizes.
+from peft import PeftModel
 
-### Recommended hyperparameters
+model.model = PeftModel.from_pretrained(
+    model.model,
+    path_to_adapter
+)
 
-#### Learning rate
-The official script defaults to `2e-5`. Community fine-tuning reports of Qwen3
-TT and this project's own experiments show `2e-5` can cause **severe generation
-problems** (garbled/unstable audio). The default here is **`2e-6`**.
+ref_audio = "https://qianwen-res.oss-cn-beijing.aliyuncs.com/Qwen3-TTS-Repo/clone.wav"
+ref_text  = "Okay. Yeah. I resent you. I love you. I respect you. But you know what? You blew it! And thanks to you."
 
-#### LoRA inference scale
-When manually merging LoRA weights, a scale of `1.0` over-steers and forces the
-output. Use a merge scale of **`0.3`–`0.35`** (see `merge_lora` in `src/peft.py`).
+wavs, sr = model.generate_voice_clone(
+    text="I am solving the equation: x = [-b ± √(b²-4ac)] / 2a? Nobody can — it's a disaster (◍•͈⌔•͈◍), very sad!",
+    language="English",
+    ref_audio=ref_audio,
+    ref_text=ref_text,
+)
 
-#### Sampling rate
-The Qwen3-TTS-12Hz pipeline only supports **24 kHz** audio. Everything is
-resampled to 24 kHz; `extract_mels` asserts `sr == 24000`.
+# Save the resulting audio
+sf.write("output_voice_clone.wav", wavs[0], sr)
+```
+---
 
-### Additions over the official script
+## Changes vs. the official `sft_12hz.py`
 
-- **Full fine-tuning or LoRA** with correct LoRA adapter persistence and
-  downstream model-merging support.
-- **JSON & YAML** Pydantic-validated configs instead of `argparse` + JSONL.
-- **`datasets.Audio()` dataset loading** through the `datasets` library
-  (including speaker filtering and train/test splits) instead of raw JSONL —
-  Parquet and other Hub/local audio formats supported.
-- **Reference-audio strategies** (`random` / `good enough` / `best`).
-- **wandb experiment tracking** (hyperparameters + per-step & per-epoch metrics).
-- **Training resume** via `accelerator.save_state`.
-- **Evaluation** (WER, speaker similarity) and sample saving, gated per epoch.
-- **Hub checkpoint uploads** (`create_repo` / `upload_folder`) with per-repo
-  `revision`, `path_in_repo`, and commit-template support.
+**Bug fixes:**
+- **Double label-shift** — the official script shifts `inputs_embeds`/`attention_mask`/`labels` (`[:, 1:]`) AND HF's loss shifts again. This pipeline passes unshifted tensors so labels are shifted exactly once.
+- **Text-projection** — the official feeds 1024-dim text embeddings (0.6B) straight into a 2048-dim codec sum. This pipeline applies `model.talker.text_projection(...)` to match dims.
+
+**Additions:** `datasets.Audio()` loading instead of JSONL, LoRA + merge handling, JSON/YAML config, distributed training, wandb tracking, WER/speaker-similarity eval, resume, Hub uploads.
 
 ---
 
 ## License / attribution
 
-The vendored `qwen_tts/` package is **Apache-2.0 © Alibaba Qwen Team**. Training
-logic in this repository builds on their `finetuning/sft_12hz.py` reference.
-See `qwen_tts/` for the relevant license texts.
+Vendored `qwen_tts/` is **Apache-2.0 © Alibaba Qwen Team**. Training logic builds on their `finetuning/sft_12hz.py`. See `qwen_tts/` for license texts.

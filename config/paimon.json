@@ -1,0 +1,85 @@
+{
+    "lora": {
+        "r": 32,
+        "lora_alpha": 64,
+        "lora_dropout": 0.1,
+        "target_modules": [
+            "q_proj",
+            "k_proj",
+            "v_proj",
+            "o_proj",
+            "gate_proj",
+            "up_proj",
+            "down_proj"
+        ]
+    },
+    "training": {
+        "lr": 2e-05,
+        "betas": [
+            0.9,
+            0.999
+        ],
+        "eps": 1e-08,
+        "weight_decay": 0.01,
+        "amsgrad": false,
+        "epochs": 25,
+        "batch_size": 4,
+        "model": "Qwen/Qwen3-TTS-12Hz-1.7B-Base",
+        "model_path": "model",
+        "tokenizer": "Qwen/Qwen3-TTS-Tokenizer-12Hz",
+        "attn_implementation": "sdpa",
+        "speaker_name": "Paimon",
+        "gradient_accumulation_steps": 4,
+        "enable_experiment_tracking": true,
+        "deepspeed_zero_stage": 1,
+        "model_checkpoint": {
+            "save_every_n_epochs": 1,
+            "output_path": "output/model",
+            "upload_to_hub": true,
+            "upload_every_n_epochs": 1,
+            "repo_id": "rijulpaul/Qwen3TTS-1.7B-Paimon-LoRA-32",
+            "private": false,
+            "revision": "main",
+            "path_in_repo": "",
+            "commit_message": "Upload checkpoint Epoch {epoch} Steps {global_step}"
+        },
+        "training_checkpoint": {
+            "save_every_n_epochs": 1,
+            "output_path": "output/train",
+            "upload_to_hub": true,
+            "upload_every_n_epochs": 1,
+            "repo_id": "rijulpaul/Qwen3TTS-1.7B-Paimon-LoRA-32",
+            "private": false,
+            "revision": "main",
+            "path_in_repo": "/train-ckpt",
+            "commit_message": "Upload checkpoint Epoch {epoch} Steps {global_step}"
+        },
+        "resume_training_path": ""
+    },
+    "dataset": {
+        "dataset": "rijulpaul/pano30qx",
+        "subset": "Paimon",
+        "train_split": "train",
+        "test_size": 5,
+        "audio_column": "audio",
+        "transcript_column": "transcription",
+        "is_processed": false
+    },
+    "process": {
+        "top_db_to_trim": 30,
+        "target_sample_rate": 24000,
+        "select_ref_audio_strategy": "good enough",
+        "ref_audio_min_duration": 5,
+        "ref_audio_max_duration": 15
+    },
+    "wandb": {
+        "project": "Qwen3TTS-Paimon",
+        "mode": "online"
+    },
+    "testing": {
+      "word_error_rate": true,
+      "speaker_similarity": true,
+      "save_samples": true,
+      "output_path": "./output/{epoch}"
+    }
+}

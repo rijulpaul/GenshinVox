@@ -59,6 +59,7 @@
     "subset": "subset",
     "train_split": "train",
     "test_split": "test",
+    "test_size": 10,
     "audio_column": "audio",
     "transcript_column": "transcription",
     "speaker_column": "speaker",
