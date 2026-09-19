@@ -339,6 +339,7 @@ def finetune(model, train_dataset, test_dataset, accelerator):
                 )
                 tts = Qwen3TTSModel.from_pretrained(
                     output_dir,
+                    device_map="cuda",
                     attn_implementation=training_config.attn_implementation,
                 )
                 if config.lora:
