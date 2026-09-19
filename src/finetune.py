@@ -304,6 +304,10 @@ def finetune(model, train_dataset, test_dataset, accelerator):
                             os.path.join(output_dir,"adapter")
                         )
 
+                        tts = Qwen3TTSModel.from_pretrained(
+                            training_config.model_path,
+                        ).model
+
                     shutil.copytree(
                         training_config.model_path, output_dir, dirs_exist_ok=True
                     )
@@ -325,11 +329,18 @@ def finetune(model, train_dataset, test_dataset, accelerator):
                     with open(output_config_file, "w", encoding="utf-8") as f:
                         json.dump(config_dict, f, indent=2, ensure_ascii=False)
 
+                    if config.lora:
+                        state_dict = {
+                            k: v.detach().to("cpu")
+                            for k, v in tts.state_dict().items()
+                        }
+                        del tts
 
-                    state_dict = {
-                        k: v.detach().to("cpu")
-                        for k, v in accelerator.get_state_dict(unwrap=True).items()
-                    }
+                    else:
+                        state_dict = {
+                            k: v.detach().to("cpu")
+                            for k, v in base_model.state_dict().items()
+                        }
 
                     for k,v in state_dict.items():
                         print(k,v)
