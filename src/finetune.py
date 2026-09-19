@@ -279,7 +279,7 @@ def finetune(model, train_dataset, test_dataset, accelerator):
             accelerator.save_state(output_dir)
             info(f"Training checkpoint (resumable) saved to {output_dir}")
             run = accelerator.get_tracker('wandb',unwrap=True)
-            run_id = run.id if run else None
+            run_id = run.id if hasattr(run,"id") else None
             data = {
                 "epoch": epoch,
                 "global step": global_step,
@@ -288,8 +288,67 @@ def finetune(model, train_dataset, test_dataset, accelerator):
             with open(os.path.join(output_dir,'train_info.json'),'w') as file:
                 json.dump(data,file,indent=4)
 
-        if accelerator.is_main_process:
-            print('main')
+            if accelerator.is_main_process():
+                # Save model checkpoint Locally and setup for inference
+                if epoch % model_ckpt_config.save_every_n_epochs == 0:
+
+                    output_dir = os.path.join(
+                        model_ckpt_config.output_path.format(
+                            epoch=f"{epoch:03d}", global_step=global_step
+                        )
+                    )
+
+                    if config.lora:
+                        # save adapters
+                        base_model.save_pretrained(
+                            os.path.join(output_dir,"adapter")
+                        )
+
+                    shutil.copytree(
+                        training_config.model_path, output_dir, dirs_exist_ok=True
+                    )
+
+                    input_config_file = os.path.join(
+                        training_config.model_path, "config.json"
+                    )
+                    output_config_file = os.path.join(output_dir, "config.json")
+                    with open(input_config_file, "r", encoding="utf-8") as f:
+                        config_dict = json.load(f)
+                        config_dict["tts_model_type"] = "custom_voice"
+                        talker_config = config_dict.get("talker_config", {})
+                        talker_config["spk_id"] = {training_config.speaker_name.lower(): 3000}
+                        talker_config["spk_is_dialect"] = {
+                            training_config.speaker_name.lower(): False
+                        }
+                        config_dict["talker_config"] = talker_config
+
+                    with open(output_config_file, "w", encoding="utf-8") as f:
+                        json.dump(config_dict, f, indent=2, ensure_ascii=False)
+
+
+                    state_dict = {
+                        k: v.detach().to("cpu")
+                        for k, v in base_model.state_dict().items()
+                    }
+
+                    drop_prefix = "speaker_encoder"
+                    keys_to_drop = [
+                        k for k in state_dict.keys() if k.startswith(drop_prefix)
+                    ]
+                    for k in keys_to_drop:
+                        del state_dict[k]
+
+                    weight = state_dict["talker.model.codec_embedding.weight"]
+                    state_dict["talker.model.codec_embedding.weight"][3000] = (
+                        target_speaker_embedding[0]
+                        .detach()
+                        .to(weight.device)
+                        .to(weight.dtype)
+                    )
+                    save_path = os.path.join(output_dir, "model.safetensors")
+                    save_file(state_dict, save_path)
+                    info(f"Model checkpoint saved to {save_path}")
+
         accelerator.wait_for_everyone()
 
     accelerator.end_training()
