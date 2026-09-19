@@ -66,6 +66,7 @@ class TrainingConfig(BaseModel):
     attn_implementation: str = "flash-attn"
     speaker_name: str       # The speaker_name to set in the model
     gradient_accumulation_steps: int = 1
+    deepspeed_zero_stage: int | None = None
     enable_experiment_tracking: bool = False    # Use WandB to track experiment
     model_checkpoint: CheckpointConfig          # Model Checkpoint save inference ready model with modified state dict and differ from a Training Checkpoint
     training_checkpoint: CheckpointConfig | None = None     # To enable training resumability

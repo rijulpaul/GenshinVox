@@ -31,6 +31,7 @@ training:
   speaker_name: "Test Speaker"
   gradient_accumulation_steps: 2
   enable_experiment_tracking: true
+  deepspeed_zero_stage: null
   model_checkpoint:
     save_every_n_epochs: 1
     output_path: "output/model"

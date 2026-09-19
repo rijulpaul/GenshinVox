@@ -2,9 +2,10 @@ import argparse
 import dotenv
 import torch
 
-from transformers import AutoConfig
 from accelerate import Accelerator
+from accelerate.utils import DeepSpeedPlugin
 from datasets import load_from_disk
+from transformers import AutoConfig
 
 from src.config import load_config
 from src.finetune import finetune
@@ -26,8 +27,17 @@ if __name__ == "__main__":
 
     config = load_config(args.config)
 
+    deepspeed_plugin = None
+    if config.training.deepspeed_zero_stage:
+        deepspeed_plugin = DeepSpeedPlugin(
+            zero_stage=config.training.deepspeed_zero_stage,
+            gradient_accumulation_steps=config.training.gradient_accumulation_steps,
+            gradient_clipping=1.0,
+        )
+
     accelerator = Accelerator(
         gradient_accumulation_steps=config.training.gradient_accumulation_steps,
+        deepspeed_plugin=deepspeed_plugin,
         mixed_precision="bf16",
         log_with="wandb",
     )

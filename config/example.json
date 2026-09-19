@@ -28,6 +28,7 @@
     "attn_implementation": "sdpa",
     "speaker_name": "Test Speaker",
     "gradient_accumulation_steps": 2,
+    "deepspeed_zero_stage": null,
     "enable_experiment_tracking": true,
     "model_checkpoint": {
       "save_every_n_epochs": 1,
