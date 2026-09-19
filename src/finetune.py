@@ -288,7 +288,7 @@ def finetune(model, train_dataset, test_dataset, accelerator):
             with open(os.path.join(output_dir,'train_info.json'),'w') as file:
                 json.dump(data,file,indent=4)
 
-            if accelerator.is_main_process():
+            if accelerator.is_main_process:
                 # Save model checkpoint Locally and setup for inference
                 if epoch % model_ckpt_config.save_every_n_epochs == 0:
 
@@ -330,6 +330,9 @@ def finetune(model, train_dataset, test_dataset, accelerator):
                         k: v.detach().to("cpu")
                         for k, v in base_model.state_dict().items()
                     }
+
+                    for k,v in state_dict.items():
+                        print(k,v)
 
                     drop_prefix = "speaker_encoder"
                     keys_to_drop = [
