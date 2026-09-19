@@ -328,7 +328,7 @@ def finetune(model, train_dataset, test_dataset, accelerator):
 
                     state_dict = {
                         k: v.detach().to("cpu")
-                        for k, v in accelerate.get_state_dict(unwrap=True).items()
+                        for k, v in accelerator.get_state_dict(unwrap=True).items()
                     }
 
                     for k,v in state_dict.items():
