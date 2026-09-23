@@ -1,5 +1,5 @@
 [project]
-name = "Qwen3 TTS Finetuner"
+name = "qwen3-tts-finetuner"
 version = "0.1.0"
 description = "Config Driven Qwen3 TTS Finetuning (LoRA/Full) Pipeline"
 readme = "README.md"
