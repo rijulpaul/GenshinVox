@@ -53,9 +53,9 @@ def calculate_speaker_similarity(audio1, audio2):
         __stt_model = Model.from_pretrained("pyannote/wespeaker-voxceleb-resnet34-LM")
     # Better Alternative: "pyannote/embedding", use_auth_token=os.env["HF_TOKEN"]
 
-    from pyannote.audio import Inference
-    __stt_model = Inference(__stt_model, window="whole")
-    __stt_model.to(torch.device("cuda"))
+        from pyannote.audio import Inference
+        __stt_model = Inference(__stt_model, window="whole")
+        __stt_model.to(torch.device("cuda"))
 
     embedding1 = __stt_model(__to_waveform(audio1))
     embedding2 = __stt_model(__to_waveform(audio2))
