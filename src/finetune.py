@@ -452,6 +452,5 @@ def finetune(model, train_dataset, test_dataset, accelerator):
 
         accelerator.wait_for_everyone()
 
->>>>>>> test
     accelerator.end_training()
     info("Training complete; accelerator tracker ended")
