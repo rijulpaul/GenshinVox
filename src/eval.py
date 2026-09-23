@@ -6,11 +6,11 @@ __asr_model = None
 __stt_model = None
 
 def unload():
-    global __sst_model
-    if __sst_model:
+    global __stt_model
+    if __stt_model:
         info("Unloading speaker similarity model")
-        del __sst_model
-        __sst_model = None
+        del __stt_model
+        __stt_model = None
 
     global __asr_model
     if __asr_model:
